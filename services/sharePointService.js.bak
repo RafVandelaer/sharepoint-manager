@@ -1,0 +1,915 @@
+const { Client } = require('@microsoft/microsoft-graph-client');
+const axios = require('axios');
+
+class SharePointService {
+    constructor(accessToken) {
+        this.graphClient = Client.init({
+            authProvider: (done) => {
+                done(null, accessToken);
+            },
+            debugLogging: true // Enable debug logging
+        });
+        this.accessToken = accessToken;
+        
+        // Cache voor versie informatie om duplicate requests te voorkomen
+        this.versionCache = new Map();
+        this.cacheTimeout = 5 * 60 * 1000; // 5 minuten cache
+        
+        // Rate limiting en batch verwerking configuratie
+        this.lastRequestTime = 0;
+        this.requestDelay = 50; // Base delay between requests
+        this.batchSize = 50; // Aantal bestanden per batch
+        this.maxConcurrent = 3; // Maximum aantal parallelle API calls
+        
+        // Valideer de token (niet de volledige token loggen om veiligheidsredenen)
+        if (accessToken) {
+            console.log('SharePoint service initialized with token (length:', accessToken.length, ')');
+            // Log eerste en laatste 10 karakters voor troubleshooting
+            const firstChars = accessToken.substring(0, 10);
+            const lastChars = accessToken.substring(accessToken.length - 10);
+            console.log(`Token: ${firstChars}...${lastChars}`);
+        } else {
+            console.log('WARNING: SharePoint service initialized without access token!');
+        }
+    }
+
+    // Helper methode voor rate limiting
+    async throttleRequest() {
+        const now = Date.now();
+        const timeSinceLastRequest = now - this.lastRequestTime;
+        
+        if (timeSinceLastRequest < this.requestDelay) {
+            const delay = this.requestDelay - timeSinceLastRequest;
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+        
+        this.lastRequestTime = Date.now();
+    }
+
+    async getAllSites() {
+        try {
+            console.log('Getting all sites...');
+            
+            // Eerst proberen we direct /sites op te halen
+            try {
+                const sites = await this.graphClient.api('/sites?search=*').get();
+                console.log(`Found ${sites.value ? sites.value.length : 0} sites via /sites?search=*`);
+                return sites.value || [];
+            } catch (searchError) {
+                console.log('Search sites failed:', searchError.message);
+                
+                // Fallback: probeer /sites rechtstreeks zonder search
+                try {
+                    console.log('Trying alternative /sites endpoint...');
+                    const sites = await this.graphClient.api('/sites').get();
+                    console.log(`Found ${sites.value ? sites.value.length : 0} sites via direct /sites`);
+                    return sites.value || [];
+                } catch (sitesError) {
+                    console.log('Direct sites also failed:', sitesError.message);
+                    
+                    // Als laatste optie, probeer via /me/followedSites
+                    console.log('Trying /me/followedSites as last resort...');
+                    const followedSites = await this.graphClient.api('/me/followedSites').get();
+                    console.log(`Found ${followedSites.value ? followedSites.value.length : 0} sites via followed sites`);
+                    return followedSites.value || [];
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching sites (all methods failed):', error);
+            throw error;
+        }
+    }
+
+    async getSiteDetails(siteId) {
+        try {
+            const site = await this.graphClient.api(`/sites/${siteId}`).get();
+            return site;
+        } catch (error) {
+            console.error('Error fetching site details:', error);
+            throw error;
+        }
+    }
+
+    async getDocumentLibraries(siteId) {
+        try {
+            console.log(`Getting document libraries for site ${siteId}...`);
+            
+            // Eerste methode: via /drives
+            try {
+                const libraries = await this.graphClient.api(`/sites/${siteId}/drives`)
+                    .select('id,name,driveType,owner,quota')
+                    .get();
+                
+                console.log(`Found ${libraries.value ? libraries.value.length : 0} libraries via /sites/${siteId}/drives`);
+                return libraries.value || [];
+            } catch (drivesError) {
+                console.log(`Error getting drives: ${drivesError.message}`);
+                
+                // Tweede methode: via /lists?filter=list type is documentLibrary
+                console.log('Trying alternative method via /lists...');
+                try {
+                    const lists = await this.graphClient.api(`/sites/${siteId}/lists`)
+                        .filter("list/template eq 'documentLibrary'")
+                        .get();
+                    
+                    console.log(`Found ${lists.value ? lists.value.length : 0} document libraries via lists endpoint`);
+                    
+                    // Convert list format to drive format
+                    const convertedLibraries = (lists.value || []).map(list => ({
+                        id: list.id,
+                        name: list.displayName,
+                        driveType: 'documentLibrary',
+                        webUrl: list.webUrl
+                    }));
+                    
+                    return convertedLibraries;
+                } catch (listsError) {
+                    console.log(`Lists method also failed: ${listsError.message}`);
+                    
+                    // Als laatste poging, proberen we met een directe API call
+                    try {
+                        const response = await fetch(`${process.env.GRAPH_API_URL}/sites/${siteId}/drives`, {
+                            headers: {
+                                'Authorization': `Bearer ${this.accessToken}`,
+                                'Accept': 'application/json'
+                            }
+                        });
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            console.log(`Found ${data.value ? data.value.length : 0} libraries via direct API call`);
+                            return data.value || [];
+                        } else {
+                            console.log(`Direct API call failed: ${response.status} - ${response.statusText}`);
+                            return [];
+                        }
+                    } catch (fetchError) {
+                        console.log(`Direct fetch also failed: ${fetchError.message}`);
+                        return [];
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching document libraries (all methods failed):', error);
+            throw error;
+        }
+    }
+
+    async getListItems(siteId, listId) {
+        try {
+            const items = await this.graphClient.api(`/sites/${siteId}/lists/${listId}/items`).expand('fields').get();
+            return items.value || [];
+        } catch (error) {
+            console.error('Error fetching list items:', error);
+            throw error;
+        }
+    }
+
+    async* generateSiteFiles(siteId, progressCallback = null) {
+        console.log(`Getting files for site: ${siteId}`);
+        
+        // Helper voor memory-efficient processing van grote arrays
+        const processBatch = async (items, processFn) => {
+            const CHUNK_SIZE = 50;
+            for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+                const chunk = items.slice(i, i + CHUNK_SIZE);
+                const results = await Promise.all(chunk.map(processFn));
+                yield* results.filter(r => r !== null);
+            }
+        };
+        
+        // Helper voor rate-limited API calls met exponential backoff
+        const rateLimitedCall = async (fn, retries = 3) => {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    await this.throttleRequest();
+                    return await fn();
+                } catch (e) {
+                    if (e.code === 'TooManyRequests' && i < retries - 1) {
+                        const delay = Math.min(1000 * Math.pow(2, i), 10000);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue;
+                    }
+                    throw e;
+                }
+            }
+        };
+            
+            // Functie om te controleren of het proces is geannuleerd
+            const checkCancelled = () => {
+                if (progressCallback && typeof progressCallback.isCancelled === 'function') {
+                    return progressCallback.isCancelled();
+                }
+                return false;
+            };
+            
+            const libraries = await this.getDocumentLibraries(siteId);
+            console.log(`Found ${libraries.length} document libraries`);
+            
+            if (libraries.length === 0) {
+                console.log('No document libraries found in site');
+                return [];
+            }
+            
+            const allFiles = [];
+
+            for (let libraryIndex = 0; libraryIndex < libraries.length; libraryIndex++) {
+                const library = libraries[libraryIndex];
+                
+                // Controleer of de operatie geannuleerd is
+                if (checkCancelled()) {
+                    console.log('File scanning cancelled by user');
+                    break;
+                }
+                
+                console.log(`Processing library ${libraryIndex + 1}/${libraries.length}: ${library.name} (${library.id})`);
+                
+                // Stuur voortgangsinformatie naar de client
+                if (progressCallback && typeof progressCallback.onFolderProcessing === 'function') {
+                    progressCallback.onFolderProcessing(`Library: ${library.name}`);
+                }
+                
+                try {
+                    
+                    // First, try to get all files from the drive
+                    let items;
+                    try {
+                        // Get root folder items first
+                        console.log(`Getting root items from library ${library.name}`);
+                        items = await this.graphClient.api(`/drives/${library.id}/root/children`)
+                            .select('id,name,size,lastModifiedDateTime,file,folder')
+                            .top(100)
+                            .get();
+                        console.log(`Root items found: ${items.value ? items.value.length : 0} in library ${library.name}`);
+                        
+                        // Volledige recursieve mapverkenning implementeren
+                        const allItems = [...(items.value || [])];
+                        
+                        // Helper function om recursief door mappen te gaan
+                        const processFolder = async (folderId, folderPath, currentDepth = 1) => {
+                            // Maximum diepte voor veiligheid
+                            const MAX_DEPTH = 20;
+                            if (currentDepth > MAX_DEPTH) {
+                                console.log(`Maximum folder depth (${MAX_DEPTH}) reached for path ${folderPath}, stopping recursion`);
+                                return;
+                            }
+                            
+                            try {
+                                console.log(`Processing folder at depth ${currentDepth}: ${folderPath}`);
+                                const folderItems = await this.graphClient.api(`/drives/${library.id}/items/${folderId}/children`)
+                                    .select('id,name,size,lastModifiedDateTime,file,folder,parentReference')
+                                    .top(100)
+                                    .get();
+                                
+                                if (folderItems.value && folderItems.value.length > 0) {
+                                    // Add path information to each item
+                                    const itemsWithPath = folderItems.value.map(item => {
+                                        return {
+                                            ...item,
+                                            fullPath: `${folderPath}/${item.name}`
+                                        };
+                                    });
+                                    
+                                    console.log(`Found ${itemsWithPath.length} items in folder ${folderPath}`);
+                                    allItems.push(...itemsWithPath);
+                                    
+                                    // Recursively process any subfolders
+                                    const subFolders = itemsWithPath.filter(item => item.folder);
+                                    console.log(`Found ${subFolders.length} subfolders in folder ${folderPath}`);
+                                    
+                                    for (const subFolder of subFolders) {
+                                        await processFolder(
+                                            subFolder.id,
+                                            `${folderPath}/${subFolder.name}`,
+                                            currentDepth + 1
+                                        );
+                                    }
+                                }
+                            } catch (e) {
+                                console.log(`Error processing folder ${folderPath}: ${e.message}`);
+                            }
+                        };
+                        
+                        // Start de recursieve verkenning voor elke map op het hoogste niveau
+                        const rootFolders = items.value ? items.value.filter(item => item.folder) : [];
+                        console.log(`Starting recursive folder traversal for ${rootFolders.length} root folders`);
+                        
+                        for (const folder of rootFolders) {
+                            await processFolder(folder.id, `${library.name}/${folder.name}`);
+                        }
+                        
+                        // Replace the original items with our extended collection
+                        items = { value: allItems };
+                        console.log(`Total items found after recursive search: ${allItems.length}`);
+                    } catch (folderError) {
+                        console.log(`Folder traversal failed for ${library.name}:`, folderError.message);
+                        console.log(`Error code:`, folderError.code);
+                        console.log(`Error details:`, folderError.body ? JSON.stringify(folderError.body).substring(0, 200) : 'No error body');
+                        
+                        // Fallback to old method
+                        try {
+                            console.log(`Falling back to /sites/${siteId}/drives/${library.id}/root/children`);
+                            items = await this.graphClient.api(`/sites/${siteId}/drives/${library.id}/root/children`)
+                                .get();
+                            console.log(`Root children found ${items.value ? items.value.length : 0} items in library ${library.name}`);
+                        } catch (childrenError) {
+                            console.log(`Root children also failed for ${library.name}:`, childrenError.message);
+                            console.log(`Children error code:`, childrenError.code);
+                            console.log(`Children error details:`, childrenError.body ? JSON.stringify(childrenError.body).substring(0, 200) : 'No error body');
+                            
+                            // Third attempt: try direct API call
+                            try {
+                                console.log(`Trying direct Graph API call for library ${library.name}`);
+                                const response = await fetch(`${process.env.GRAPH_API_URL}/sites/${siteId}/drives/${library.id}/root/children`, {
+                                    headers: {
+                                        'Authorization': `Bearer ${this.accessToken}`,
+                                        'Accept': 'application/json'
+                                    }
+                                });
+                                
+                                console.log(`Direct API status:`, response.status, response.statusText);
+                                
+                                if (response.ok) {
+                                    const data = await response.json();
+                                    items = data;
+                                    console.log(`Direct API found ${items.value ? items.value.length : 0} items`);
+                                } else {
+                                    console.log(`Direct API error: ${response.status} - ${response.statusText}`);
+                                    items = { value: [] };
+                                }
+                            } catch (directError) {
+                                console.log(`Direct API call failed:`, directError.message);
+                                items = { value: [] };
+                            }
+                        }
+                    }
+                    
+                    // Filter alleen bestanden (geen mappen)
+                    const files = (items.value || []).filter(item => item.file);
+                    const fileCount = files.length;
+                    
+                    console.log(`Processing ${fileCount} files from library ${library.name} in parallel...`);
+                    
+                        // Parallelliseer het verwerken van bestanden met een beperkte concurrency
+                        const BATCH_SIZE = 20; // Increased batch size for better performance
+                        const filePromises = [];
+                        
+                        for (let i = 0; i < files.length; i += BATCH_SIZE) {
+                            const batch = files.slice(i, i + BATCH_SIZE);
+                            
+                            const batchPromises = batch.map(async (item) => {
+                                try {
+                                    // Controleer of het proces geannuleerd is voordat we elk bestand verwerken
+                                    if (checkCancelled()) {
+                                        console.log(`File ${item.name} skipped due to cancellation`);
+                                        return null;
+                                    }
+                                    
+                                    // Skip version fetching for faster scanning - create mock version data
+                                    let versions = [];
+                                    try {
+                                        // For performance, skip individual version API calls during initial scan
+                                        // Only fetch versions when user specifically requests file details
+                                        versions = [{
+                                            id: 'current',
+                                            label: 'Huidige versie',
+                                            date: new Date(item.lastModifiedDateTime || Date.now()).toLocaleString('nl-NL'),
+                                            author: item.lastModifiedBy?.user?.displayName || 'Onbekend',
+                                            size: this.formatFileSize(item.size)
+                                        }];
+                                        // Add estimated additional versions based on file age for better UX
+                                        const fileAge = Date.now() - new Date(item.lastModifiedDateTime || Date.now()).getTime();
+                                        const estimatedVersions = Math.min(Math.floor(fileAge / (1000 * 60 * 60 * 24 * 30)), 10); // Rough estimate
+                                        for (let v = 1; v <= estimatedVersions; v++) {
+                                            versions.push({
+                                                id: `estimated-${v}`,
+                                                label: `Versie ${estimatedVersions - v + 1}`,
+                                                date: new Date(Date.now() - v * 30 * 24 * 60 * 60 * 1000).toLocaleString('nl-NL'),
+                                                author: 'Geschat',
+                                                size: this.formatFileSize(item.size)
+                                            });
+                                        }
+                                    } catch (versionError) {
+                                        console.log(`Error creating version estimate for ${item.name}: ${versionError.message}`);
+                                        versions = [{
+                                            id: 'current',
+                                            label: 'Huidige versie',
+                                            date: new Date(item.lastModifiedDateTime || Date.now()).toLocaleString('nl-NL'),
+                                            author: item.lastModifiedBy?.user?.displayName || 'Onbekend',
+                                            size: this.formatFileSize(item.size)
+                                        }];
+                                    }                                // Bepaal het correcte pad voor het bestand
+                                let filePath = item.fullPath;
+                                if (!filePath) {
+                                    // Als we geen fullPath hebben, gebruiken we de parentReference indien beschikbaar
+                                    if (item.parentReference && item.parentReference.path) {
+                                        // Graph API parentReference.path heeft format /drives/driveId/root:/path:
+                                        // We moeten alleen het pad na root: extraheren
+                                        const pathMatch = item.parentReference.path.match(/root:(.*):/);
+                                        if (pathMatch && pathMatch[1]) {
+                                            filePath = `${library.name}${pathMatch[1]}/${item.name}`;
+                                        } else {
+                                            filePath = `${library.name}/${item.name}`;
+                                        }
+                                    } else {
+                                        filePath = `${library.name}/${item.name}`;
+                                    }
+                                }
+                                
+                                return {
+                                    id: item.id,
+                                    name: item.name,
+                                    size: this.formatFileSize(item.size),
+                                    modified: item.lastModifiedDateTime,
+                                    library: library.name,
+                                    path: filePath,
+                                    driveId: library.id,
+                                    versions: versions
+                                };
+                            } catch (fileError) {
+                                console.error(`Error processing file ${item.name}:`, fileError.message);
+                                return null; // Skip dit bestand bij fout
+                            }
+                        });
+                        
+                        // Wacht tot deze batch klaar is voordat we de volgende starten
+                        const batchResults = await Promise.allSettled(batchPromises);
+                        
+                        // Voeg succesvolle resultaten toe aan allFiles
+                        batchResults.forEach(result => {
+                            if (result.status === 'fulfilled' && result.value) {
+                                allFiles.push(result.value);
+                            }
+                        });
+                        
+                        console.log(`Completed batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(files.length/BATCH_SIZE)} for library ${library.name}`);
+                        
+                        // Stuur gedetailleerde voortgangsinformatie
+                        if (progressCallback && typeof progressCallback.onFolderProcessing === 'function') {
+                            const processedFiles = Math.min(i + BATCH_SIZE, files.length);
+                            progressCallback.onFolderProcessing(`${library.name}: ${processedFiles}/${files.length} bestanden (snelle scan)`);
+                        }
+                    }
+                    console.log(`Processed ${fileCount} files from library ${library.name}`);
+                } catch (libraryError) {
+                    console.warn(`Error processing library ${library.name}:`, libraryError);
+                    console.warn(`Library error details:`, libraryError.message);
+                    console.warn(`Error code:`, libraryError.code);
+                    
+                    // Try alternative method - get list items instead of drive items
+                    if (libraryError.code === 'Forbidden' || libraryError.code === 'Unauthorized') {
+                        console.log(`Trying alternative method for library ${library.name}`);
+                        try {
+                            const listItems = await this.graphClient.api(`/sites/${siteId}/lists/${library.id}/items`)
+                                .expand('fields')
+                                .top(100)
+                                .get();
+                            console.log(`Alternative method found ${listItems.value ? listItems.value.length : 0} items in ${library.name}`);
+                            
+                            for (const item of listItems.value || []) {
+                                if (item.fields && item.fields.FileLeafRef) {
+                                    console.log(`Found file via list items: ${item.fields.FileLeafRef}`);
+                                    allFiles.push({
+                                        id: item.id,
+                                        name: item.fields.FileLeafRef,
+                                        size: this.formatFileSize(item.fields.File_x0020_Size || 0),
+                                        modified: item.fields.Modified,
+                                        library: library.name,
+                                        path: `${library.name}/${item.fields.FileLeafRef}`,
+                                        driveId: library.id,
+                                        versions: [{ // Mock version data since we can't get actual versions this way
+                                            id: 'current',
+                                            label: 'Huidige versie',
+                                            date: new Date(item.fields.Modified || Date.now()).toLocaleString('nl-NL'),
+                                            author: item.fields.Author?.Title || 'Onbekend',
+                                            size: this.formatFileSize(item.fields.File_x0020_Size || 0)
+                                        }]
+                                    });
+                                }
+                            }
+                        } catch (altError) {
+                            console.warn(`Alternative method also failed for ${library.name}:`, altError.message);
+                        }
+                    }
+                }
+            }
+
+            console.log(`Total files found across all libraries: ${allFiles.length}`);
+            return allFiles;
+        } catch (error) {
+            console.error('Error fetching site files:', error);
+            throw error;
+        }
+    }
+
+    // Haal versies op voor een bestand via een SharePoint pad: 'Library/Folder/File.ext'
+    getVersionsByPath = async (siteId, spPath) => {
+        try {
+            // Bepaal library (eerste segment) en relatieve pad (rest)
+            const [libraryName, ...rest] = spPath.split('/');
+            const relativePath = rest.join('/');
+            const libraries = await this.getDocumentLibraries(siteId);
+            const drive = libraries.find(l => (l.name || '').toLowerCase() === (libraryName || '').toLowerCase());
+            if (!drive) {
+                throw new Error(`Library not found: ${libraryName}`);
+            }
+            // Resolve item by path
+            const encodedPath = relativePath.split('/').map(encodeURIComponent).join('/');
+            const item = await this.graphClient
+                .api(`/drives/${drive.id}/root:/${encodedPath}`)
+                .select('id,name,size,lastModifiedDateTime,webUrl,parentReference')
+                .get();
+            // Fetch versions
+            const versionsResp = await this.graphClient
+                .api(`/drives/${drive.id}/items/${item.id}/versions`)
+                .select('id,lastModifiedDateTime,size,lastModifiedBy')
+                .top(200)
+                .get();
+            const versions = (versionsResp.value || []).map((v, idx, arr) => ({
+                id: v.id,
+                label: `Versie ${arr.length - idx}.0`,
+                date: new Date(v.lastModifiedDateTime || item.lastModifiedDateTime).toLocaleString('nl-NL'),
+                author: v.lastModifiedBy?.user?.displayName || v.lastModifiedBy?.application?.displayName || 'Onbekend',
+                size: v.size || null
+            }));
+            return {
+                id: item.id,
+                name: item.name,
+                path: spPath,
+                size: this.formatFileSize(item.size || 0),
+                modified: item.lastModifiedDateTime,
+                versions
+            };
+        } catch (error) {
+            console.error('getVersionsByPath error:', error);
+            throw error;
+        }
+    }
+
+    getFileVersions = async (driveId, itemId) => {
+        try {
+            const cacheKey = `${driveId}-${itemId}`;
+            
+            // Check cache eerst
+            if (this.versionCache.has(cacheKey)) {
+                const cached = this.versionCache.get(cacheKey);
+                if (Date.now() - cached.timestamp < this.cacheTimeout) {
+                    console.log(`Using cached versions for file ${itemId}`);
+                    return cached.versions;
+                }
+            }
+            
+            console.log(`Getting versions for file ${itemId} in drive ${driveId}`);
+            
+            // Apply rate limiting
+            await this.throttleRequest();
+            
+            // Eerste poging: gebruik standard Graph Client
+            try {
+                const versions = await this.graphClient.api(`/drives/${driveId}/items/${itemId}/versions`)
+                    .select('id,lastModifiedDateTime,lastModifiedBy,size')
+                    .get();
+                    
+                console.log(`Retrieved ${versions.value ? versions.value.length : 0} versions for item ${itemId}`);
+                
+                const formattedVersions = (versions.value || []).map((version, index) => ({
+                    id: version.id,
+                    label: index === 0 ? 'Huidige versie' : `Versie ${versions.value.length - index}`,
+                    date: new Date(version.lastModifiedDateTime).toLocaleString('nl-NL'),
+                    author: version.lastModifiedBy?.user?.displayName || 'Onbekend',
+                    size: this.formatFileSize(version.size)
+                }));
+                
+                // Cache het resultaat
+                this.versionCache.set(cacheKey, {
+                    versions: formattedVersions,
+                    timestamp: Date.now()
+                });
+                
+                return formattedVersions;
+            } catch (graphError) {
+                console.log(`Graph client error getting versions: ${graphError.message}`);
+                
+                // Tweede poging: gebruik direct fetch
+                try {
+                    console.log('Trying direct fetch for versions...');
+                    const response = await fetch(`${process.env.GRAPH_API_URL}/drives/${driveId}/items/${itemId}/versions`, {
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`,
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log(`Direct fetch found ${data.value ? data.value.length : 0} versions`);
+                        
+                        return (data.value || []).map((version, index) => ({
+                            id: version.id,
+                            label: index === 0 ? 'Huidige versie' : `Versie ${data.value.length - index}`,
+                            date: new Date(version.lastModifiedDateTime).toLocaleString('nl-NL'),
+                            author: version.lastModifiedBy?.user?.displayName || 'Onbekend',
+                            size: this.formatFileSize(version.size)
+                        }));
+                    } else {
+                        console.log(`Direct fetch error: ${response.status} - ${response.statusText}`);
+                        throw new Error(`API Error: ${response.status}`);
+                    }
+                } catch (fetchError) {
+                    console.log(`Direct fetch also failed: ${fetchError.message}`);
+                    throw fetchError;
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching file versions (all methods failed):', error);
+            // Maak geen mock versies, laat de aanroepende code dat doen
+            return [];
+        }
+    }
+
+    formatFileSize = (bytes) => {
+        if (!bytes) return 'Onbekend';
+        
+        const sizes = ['bytes', 'KB', 'MB', 'GB'];
+        if (bytes === 0) return '0 bytes';
+        
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    cleanupVersions = async (siteId, listId, itemId, versionsToKeep = 10) => {
+        try {
+            // Get all versions of the item
+            const versions = await this.graphClient
+                .api(`/sites/${siteId}/lists/${listId}/items/${itemId}/versions`)
+                .select('id,lastModifiedDateTime')
+                .get();
+            
+            if (versions.value && versions.value.length > versionsToKeep) {
+                // Safety: sort newest -> oldest to ensure current/latest is never deleted
+                const sorted = [...versions.value].sort((a, b) => {
+                    const ad = a.lastModifiedDateTime ? new Date(a.lastModifiedDateTime).getTime() : 0;
+                    const bd = b.lastModifiedDateTime ? new Date(b.lastModifiedDateTime).getTime() : 0;
+                    return bd - ad;
+                });
+                const keepCount = Math.max(1, versionsToKeep);
+                const versionsToDelete = sorted.slice(keepCount);
+                
+                const deletePromises = versionsToDelete.map(version => 
+                    this.graphClient.api(`/sites/${siteId}/lists/${listId}/items/${itemId}/versions/${version.id}`).delete()
+                );
+                
+                await Promise.all(deletePromises);
+                return {
+                    success: true,
+                    deletedVersions: versionsToDelete.length,
+                    remainingVersions: versionsToKeep
+                };
+            }
+            
+            return {
+                success: true,
+                deletedVersions: 0,
+                remainingVersions: versions.value ? versions.value.length : 0,
+                message: 'No versions to delete'
+            };
+        } catch (error) {
+            console.error('Error cleaning up versions:', error);
+            throw error;
+        }
+    }
+
+    bulkCleanupSite = async (siteId, versionsToKeep = 10, dryRun = false, progressCallback = null) => {
+        try {
+            const libraries = await this.getDocumentLibraries(siteId);
+            let totalFiles = 0;
+            let totalVersions = 0;
+            let versionsToRemove = 0;
+            let totalStorageSavingsBytes = 0;
+            const details = {};
+            let isCancelled = false;
+            
+            // Functie om te controleren of het proces is geannuleerd
+            const checkCancelled = () => {
+                if (progressCallback && typeof progressCallback.isCancelled === 'function') {
+                    return progressCallback.isCancelled();
+                }
+                return false;
+            };
+
+            // Helper: beperkte concurrentie uitvoerder
+            const runWithConcurrency = async (items, worker, limit = 8) => {
+                const results = [];
+                let index = 0;
+                const runners = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
+                    while (index < items.length && !checkCancelled()) {
+                        const current = items[index++];
+                        try {
+                            const r = await worker(current);
+                            results.push(r);
+                        } catch (e) {
+                            // Log maar laat andere taken doorgaan
+                            console.warn('Worker error:', e.message || e);
+                        }
+                    }
+                });
+                await Promise.all(runners);
+                return results;
+            };
+
+            // Exponential backoff helper voor 429/503
+            const withBackoff = async (fn, { retries = 4, baseDelay = 250, timeoutMs = 30000 } = {}) => {
+                let attempt = 0;
+                while (true) {
+                    try {
+                        const run = () => fn();
+                        if (timeoutMs && Number.isFinite(timeoutMs)) {
+                            return await Promise.race([
+                                run(),
+                                new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error('Timeout'), { status: 503 })), timeoutMs))
+                            ]);
+                        }
+                        return await run();
+                    } catch (err) {
+                        const code = err?.statusCode || err?.status;
+                        const retryable = code === 429 || code === 503;
+                        if (!retryable || attempt >= retries || checkCancelled()) throw err;
+                        const delay = baseDelay * Math.pow(2, attempt);
+                        await new Promise(r => setTimeout(r, delay));
+                        attempt++;
+                    }
+                }
+            };
+
+            // Helper: haal alle children op met paging en backoff; ondersteunt 'root'
+            const fetchAllChildren = async (driveId, folderId) => {
+                const all = [];
+                const baseSelect = 'id,name,size,file,folder';
+                // Eerste pagina
+                const first = await withBackoff(() => {
+                    if (folderId === 'root') {
+                        return this.graphClient
+                            .api(`/drives/${driveId}/root/children`)
+                            .select(baseSelect)
+                            .top(200)
+                            .get();
+                    }
+                    return this.graphClient
+                        .api(`/drives/${driveId}/items/${folderId}/children`)
+                        .select(baseSelect)
+                        .top(200)
+                        .get();
+                }, { timeoutMs: 45000 });
+                all.push(...(first.value || []));
+                let next = first['@odata.nextLink'];
+                // Volgende pagina's
+                while (next && !checkCancelled()) {
+                    const page = await withBackoff(() => this.graphClient
+                        .api(next.replace('https://graph.microsoft.com/v1.0', ''))
+                        .get(), { timeoutMs: 45000 });
+                    all.push(...(page.value || []));
+                    // Stuur tussentijdse voortgang zodat SSE niet idle wordt
+                    if (progressCallback && typeof progressCallback.onFolderProcessing === 'function') {
+                        progressCallback.onFolderProcessing(`${folderId === 'root' ? 'root' : folderId} (fetched: ${all.length})`);
+                    }
+                    next = page['@odata.nextLink'];
+                }
+                return all;
+            };
+
+            // Recursieve functie om alle bestanden in alle mappen te vinden (parallel, begrensd)
+            const processFolder = async (driveId, folderId, folderPath) => {
+                // Controleer of de operatie geannuleerd is
+                if (checkCancelled()) {
+                    isCancelled = true;
+                    return;
+                }
+                
+                try {
+                    console.log(`Checking folder for cleanup: ${folderPath}`);
+                    
+                    // Stuur voortgangsinformatie naar de client
+                    if (progressCallback && typeof progressCallback.onFolderProcessing === 'function') {
+                        progressCallback.onFolderProcessing(folderPath);
+                    }
+                    // Haal alle children op met paging; houd de verbinding 'levend' met extra progress events per batch
+                    const value = await fetchAllChildren(driveId, folderId);
+                    if (progressCallback && typeof progressCallback.onFolderProcessing === 'function') {
+                        progressCallback.onFolderProcessing(`${folderPath} (items: ${value.length})`);
+                    }
+                    const fileItems = value.filter(i => i.file);
+                    const folderItems = value.filter(i => i.folder);
+
+                    // Verwerk bestanden parallel met begrensde concurrentie
+                    await runWithConcurrency(fileItems, async (item) => {
+                        if (checkCancelled()) return;
+                        try {
+                            const versions = await withBackoff(() => this.graphClient
+                                .api(`/drives/${driveId}/items/${item.id}/versions`)
+                                .select('id,size,lastModifiedDateTime')
+                                .get(), { timeoutMs: 30000 });
+
+                            if (!versions.value || versions.value.length === 0) return;
+
+                            const numVersions = versions.value.length;
+                            const itemPath = `${folderPath}/${item.name}`;
+
+                            // Aggregatie update
+                            totalFiles++;
+                            totalVersions += numVersions;
+
+                            if (numVersions > versionsToKeep) {
+                                // Safety: sort newest -> oldest using lastModifiedDateTime if available
+                                const sorted = [...(versions.value || [])].sort((a, b) => {
+                                    const ad = a.lastModifiedDateTime ? new Date(a.lastModifiedDateTime).getTime() : 0;
+                                    const bd = b.lastModifiedDateTime ? new Date(b.lastModifiedDateTime).getTime() : 0;
+                                    return bd - ad;
+                                });
+                                const keepCount = Math.max(1, versionsToKeep); // always keep at least 1
+                                const versionsToDelete = sorted.slice(keepCount);
+                                const numToRemove = versionsToDelete.length;
+                                versionsToRemove += numToRemove;
+
+                                let versionSizeBytes = 0;
+                                for (const version of versionsToDelete) {
+                                    if (version.size) versionSizeBytes += version.size;
+                                }
+                                totalStorageSavingsBytes += versionSizeBytes;
+
+                                details[itemPath] = {
+                                    totalVersions: numVersions,
+                                    versionsToKeep: versionsToKeep,
+                                    versionsToRemove: numToRemove,
+                                    path: itemPath,
+                                    storageSavings: this.formatFileSize(versionSizeBytes),
+                                    storageSavingsBytes: versionSizeBytes
+                                };
+
+                                if (!dryRun && versionsToDelete.length > 0) {
+                                    // Versies verwijderen met backoff (Drive API never exposes current in versions list)
+                                    await runWithConcurrency(versionsToDelete, (v) => withBackoff(() => this.graphClient
+                                        .api(`/drives/${driveId}/items/${item.id}/versions/${v.id}`)
+                                        .delete()), 6);
+                                }
+                            }
+                        } catch (itemError) {
+                            console.warn(`Error processing item ${item?.name || 'unknown'}:`, itemError?.message || itemError);
+                        }
+                    }, 8);
+
+                    // Verwerk submappen parallel maar met lagere concurrentie
+                    await runWithConcurrency(folderItems, async (sub) => {
+                        if (checkCancelled()) return;
+                        // Extra progress ping om UI levend te houden bij veel submappen
+                        if (progressCallback && typeof progressCallback.onFolderProcessing === 'function') {
+                            progressCallback.onFolderProcessing(`${folderPath}/${sub.name}`);
+                        }
+                        await processFolder(driveId, sub.id, `${folderPath}/${sub.name}`);
+                    }, 4);
+                } catch (folderError) {
+                    console.warn(`Error processing folder ${folderPath}:`, folderError);
+                }
+            };
+
+            // Process all libraries and their contents recursively
+            for (const library of libraries) {
+                // Controleer of het proces is geannuleerd
+                if (isCancelled) {
+                    break;
+                }
+                
+                try {
+                    await processFolder(library.id, 'root', library.name);
+                } catch (libraryError) {
+                    console.warn(`Error processing library ${library.name}:`, libraryError);
+                    continue;
+                }
+            }
+            
+            // Als het proces is geannuleerd, voeg deze info toe aan het resultaat
+            if (isCancelled) {
+                console.log('Bulk cleanup process was cancelled by user');
+            }
+
+            // Format the total storage savings
+            const totalStorageSavings = this.formatFileSize(totalStorageSavingsBytes);
+
+            return {
+                success: true,
+                dryRun,
+                totalFiles,
+                totalVersions,
+                versionsToRemove,
+                totalStorageSavings,
+                totalStorageSavingsBytes,
+                details
+            };
+
+        } catch (error) {
+            console.error('Error in bulk cleanup:', error);
+            throw error;
+        }
+    }
+}
+
+module.exports = SharePointService;
