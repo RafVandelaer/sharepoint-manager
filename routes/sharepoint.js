@@ -588,4 +588,29 @@ router.post('/sites/:siteId/lists/:listId/items/:itemId/cleanup', requireAuth, a
     }
 });
 
+// Get cleanup history
+router.get('/sites/:siteId/cleanup-history', requireAuth, async (req, res) => {
+    try {
+        const { siteId } = req.params;
+        const sharePointService = new SharePointService(req.accessToken);
+        const history = sharePointService.getCleanupHistory(siteId);
+        res.json(history);
+    } catch (error) {
+        console.error('Error fetching cleanup history:', error);
+        res.status(500).json({ error: 'Failed to fetch cleanup history' });
+    }
+});
+
+// Get all cleanup history
+router.get('/cleanup-history', requireAuth, async (req, res) => {
+    try {
+        const sharePointService = new SharePointService(req.accessToken);
+        const history = sharePointService.getAllCleanupHistory();
+        res.json(history);
+    } catch (error) {
+        console.error('Error fetching all cleanup history:', error);
+        res.status(500).json({ error: 'Failed to fetch cleanup history' });
+    }
+});
+
 module.exports = router;

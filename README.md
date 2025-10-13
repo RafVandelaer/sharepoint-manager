@@ -167,6 +167,38 @@ sharepoint-manager/
 - Client secrets moeten veilig worden opgeslagen
 - Regelmatige token vernieuwing
 
+### ✅ Versie Veiligheid
+
+**Belangrijke garantie: De huidige versie van een bestand wordt NOOIT verwijderd!**
+
+Dit is gegarandeerd door hoe de Microsoft Graph API werkt:
+
+1. **De `/versions` API endpoint**
+   - Geeft ALLEEN historische/oude versies terug
+   - De huidige/actieve versie zit NIET in deze lijst
+   - De huidige versie is het bestand zelf (via `/items/{id}`)
+
+2. **Onze implementatie**
+   ```javascript
+   // We vragen alleen historische versies op
+   GET /drives/{driveId}/items/{itemId}/versions
+   
+   // Sorteer van nieuwste naar oudste historische versie
+   // Behoud de N nieuwste historische versies
+   // Verwijder alleen de oudste historische versies
+   ```
+
+3. **Extra veiligheidsmaatregelen**
+   - Minimaal 1 historische versie wordt altijd behouden (`Math.max(1, versionsToKeep)`)
+   - Dry run modus om te testen voordat je daadwerkelijk versies verwijdert
+   - Sortering op `lastModifiedDateTime` zorgt dat nieuwste versies behouden blijven
+
+**Voorbeeld:**
+- Bestand heeft 10 historische versies + 1 huidige versie = 11 totaal
+- Instelling: behoud 3 versies
+- Resultaat: 7 oude versies worden verwijderd, 3 nieuwste historische versies + huidige versie blijven
+- De huidige versie is ALTIJD veilig! ✅
+
 ## Troubleshooting
 
 ### Algemene Problemen

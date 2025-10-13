@@ -14,9 +14,12 @@ class SharePointService {
         this.versionCache = new Map();
         // Cache voor site scan resultaten
         this.siteScanCache = new Map();
+        // Cache voor cleanup geschiedenis
+        this.cleanupHistory = new Map();
         // Configuratie
         this.cacheTimeout = 5 * 60 * 1000; // 5 minuten cache
         this.scanCacheTimeout = 30 * 60 * 1000; // 30 minuten cache voor scans
+        this.historyLimit = 50; // Maximum aantal historie items per site
         this.lastRequestTime = 0;
         this.minRequestInterval = 100; // Minimum tijd tussen requests in ms
         this.maxRetries = 3;
@@ -163,6 +166,117 @@ class SharePointService {
         return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
     };
 
+    addCleanupHistoryEntry = (siteId, data) => {
+        if (!this.cleanupHistory.has(siteId)) {
+            this.cleanupHistory.set(siteId, []);
+        }
+        
+        const history = this.cleanupHistory.get(siteId);
+        const entry = {
+            timestamp: new Date().toISOString(),
+            ...data
+        };
+        
+        // Voeg nieuwe entry toe aan het begin
+        history.unshift(entry);
+        
+        // Beperk de geschiedenis tot historyLimit items
+        if (history.length > this.historyLimit) {
+            history.length = this.historyLimit;
+        }
+        
+        this.cleanupHistory.set(siteId, history);
+        return entry;
+    };
+
+    getCleanupHistory = (siteId) => {
+        return this.cleanupHistory.get(siteId) || [];
+    };
+
+    getAllCleanupHistory = () => {
+        const allHistory = [];
+        for (const [siteId, history] of this.cleanupHistory.entries()) {
+            allHistory.push(...history.map(entry => ({
+                ...entry,
+                siteId
+            })));
+        }
+        return allHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    };
+
+    getVersionsByPath = async (siteId, spPath) => {
+        try {
+            console.log(`Getting versions for path: ${spPath}`);
+            
+            // Split the path into library name and file path
+            const pathParts = spPath.split('/');
+            const libraryName = pathParts[0];
+            const filePath = pathParts.slice(1).join('/');
+            
+            // Eerst de library ID ophalen
+            const libraries = await this.getDocumentLibraries(siteId);
+            const library = libraries.find(lib => lib.name === libraryName);
+            
+            if (!library) {
+                throw new Error(`Library '${libraryName}' not found`);
+            }
+            
+            // Het bestand zoeken in de library
+            const driveId = library.id;
+            let currentPath = 'root';
+            let currentItem = null;
+            
+            for (const pathPart of pathParts.slice(1)) {
+                const items = await this.graphClient
+                    .api(`/drives/${driveId}/items/${currentPath}/children`)
+                    .filter(`name eq '${pathPart}'`)
+                    .get();
+                
+                if (!items.value || items.value.length === 0) {
+                    throw new Error(`Path part '${pathPart}' not found`);
+                }
+                
+                currentItem = items.value[0];
+                currentPath = currentItem.id;
+            }
+            
+            if (!currentItem) {
+                throw new Error('File not found');
+            }
+            
+            // Nu de versies ophalen
+            const versions = await this.graphClient
+                .api(`/drives/${driveId}/items/${currentItem.id}/versions`)
+                .select('id,size,lastModifiedDateTime,lastModifiedBy')
+                .get();
+                
+            // Sorteer de versies zelf
+            versions.value.sort((a, b) => 
+                new Date(b.lastModifiedDateTime) - new Date(a.lastModifiedDateTime)
+            );
+            
+            return {
+                file: {
+                    name: currentItem.name,
+                    path: spPath,
+                    id: currentItem.id,
+                    driveId: driveId
+                },
+                versions: versions.value.map(v => ({
+                    id: v.id,
+                    size: v.size,
+                    modified: v.lastModifiedDateTime,
+                    modifiedBy: v.lastModifiedBy?.user?.displayName || 'Onbekend',
+                    sizeFormatted: this.formatFileSize(v.size)
+                }))
+            };
+            
+        } catch (error) {
+            console.error('getVersionsByPath error:', error);
+            throw error;
+        }
+    };
+
     shouldSkipLibrary = (libraryName) => {
         // Lijst van libraries die we willen overslaan
         const skipPatterns = [
@@ -216,8 +330,11 @@ class SharePointService {
     bulkCleanupSite = async (siteId, versionsToKeep = 10, dryRun = false, progressCallback = null) => {
         try {
             let scanData;
+            // Cache key is alleen gebaseerd op site ID, niet op dryRun of versionsToKeep
             const cacheKey = `site-${siteId}`;
             const now = Date.now();
+            
+            console.log(`Cache lookup for site ${siteId} (dry run: ${dryRun})`);
 
             // Check of we gecachte scan data hebben
             if (this.siteScanCache.has(cacheKey)) {
@@ -225,6 +342,18 @@ class SharePointService {
                 if (now - cached.timestamp < this.scanCacheTimeout) {
                     console.log(`Using cached scan data for site ${siteId} (${Math.round((now - cached.timestamp) / 1000)}s old)`);
                     scanData = cached.data;
+                    
+                    // Als alleen het aantal versies is veranderd, gebruik dan de bestaande scan
+                    if (scanData.originalVersionsToKeep !== versionsToKeep) {
+                        console.log(`Versions to keep changed from ${scanData.originalVersionsToKeep} to ${versionsToKeep}. Using cached scan data.`);
+                        scanData.originalVersionsToKeep = versionsToKeep;
+                        // Update de cache met het nieuwe aantal versies
+                        this.siteScanCache.set(cacheKey, {
+                            data: scanData,
+                            timestamp: cached.timestamp // Behoud de originele timestamp
+                        });
+                    }
+                    
                     // Stuur progress update dat we cache gebruiken
                     if (progressCallback?.onFolderProcessing) {
                         progressCallback.onFolderProcessing('Using cached scan data - recalculating versions...');
@@ -246,8 +375,15 @@ class SharePointService {
                 scanData = { 
                     libraries,
                     items: {},
+                    itemVersions: {}, // Cache voor versie informatie per item
+                    originalVersionsToKeep: versionsToKeep, // Onthoud voor welk aantal versies we gescand hebben
                     timestamp: Date.now()
                 };
+                // Cache direct opslaan
+                this.siteScanCache.set(cacheKey, {
+                    data: scanData,
+                    timestamp: Date.now()
+                });
             }
 
             const checkCancelled = () => {
@@ -428,10 +564,33 @@ class SharePointService {
                     await runWithConcurrency(fileItems, async (item) => {
                         if (checkCancelled()) return;
                         try {
-                            const versions = await withBackoff(() => this.graphClient
-                                .api(`/drives/${driveId}/items/${item.id}/versions`)
-                                .select('id,size,lastModifiedDateTime')
-                                .get(), { timeoutMs: 30000 });
+                            // Check de cache voor versie informatie
+                            const versionCacheKey = `${driveId}:${item.id}`;
+                            let versions;
+                            
+                            if (scanData.itemVersions && scanData.itemVersions[versionCacheKey]) {
+                                versions = scanData.itemVersions[versionCacheKey];
+                                console.log(`Using cached version info for item ${item.name}`);
+                            } else {
+                                // BELANGRIJK: De /versions endpoint geeft ALLEEN historische versies terug.
+                                // De HUIDIGE/ACTIEVE versie van het bestand zit NIET in deze lijst.
+                                // De huidige versie is het bestand zelf (accessed via /items/{id}).
+                                // Dit betekent dat we NOOIT de huidige versie verwijderen, alleen oude versies.
+                                versions = await withBackoff(() => this.graphClient
+                                    .api(`/drives/${driveId}/items/${item.id}/versions`)
+                                    .select('id,size,lastModifiedDateTime')
+                                    .get(), { timeoutMs: 30000 });
+                                
+                                // Cache de versie informatie
+                                if (!scanData.itemVersions) scanData.itemVersions = {};
+                                scanData.itemVersions[versionCacheKey] = versions;
+                                
+                                // Update de cache
+                                this.siteScanCache.set(cacheKey, {
+                                    data: scanData,
+                                    timestamp: now
+                                });
+                            }
 
                             if (!versions.value || versions.value.length === 0) return;
 
@@ -440,14 +599,23 @@ class SharePointService {
 
                             totalFiles++;
                             totalVersions += numVersions;
+                            
+                            console.log(`Processing ${itemPath} - ${numVersions} versions found (dry run: ${dryRun})`); // Debug logging
 
                             if (numVersions > versionsToKeep) {
+                                // Sorteer versies van nieuwste naar oudste (op basis van lastModifiedDateTime)
+                                // VEILIGHEID: De huidige versie zit NIET in deze lijst, alleen historische versies
                                 const sorted = [...(versions.value || [])].sort((a, b) => {
                                     const ad = a.lastModifiedDateTime ? new Date(a.lastModifiedDateTime).getTime() : 0;
                                     const bd = b.lastModifiedDateTime ? new Date(b.lastModifiedDateTime).getTime() : 0;
                                     return bd - ad;
                                 });
+                                
+                                // Behoud de N nieuwste historische versies
+                                // VEILIGHEID: keepCount is minimaal 1, dus we verwijderen nooit alle versies
                                 const keepCount = Math.max(1, versionsToKeep);
+                                
+                                // Versies die verwijderd moeten worden (oudste versies)
                                 const versionsToDelete = sorted.slice(keepCount);
                                 const numToRemove = versionsToDelete.length;
                                 versionsToRemove += numToRemove;
@@ -523,7 +691,8 @@ class SharePointService {
 
             const totalStorageSavings = this.formatFileSize(totalStorageSavingsBytes);
 
-            return {
+            // Maak resultaat object
+            const results = {
                 success: true,
                 dryRun,
                 totalFiles,
@@ -532,8 +701,27 @@ class SharePointService {
                 totalStorageSavings,
                 totalStorageSavingsBytes,
                 details,
-                usedCache: !!scanData
+                usedCache: !!scanData,
+                cacheInfo: {
+                    timestamp: scanData?.timestamp,
+                    age: scanData ? Math.round((now - scanData.timestamp) / 1000) : 0,
+                    originalVersionsToKeep: scanData?.originalVersionsToKeep
+                }
             };
+
+            // Voeg toe aan geschiedenis als het geen dry run was
+            if (!dryRun) {
+                this.addCleanupHistoryEntry(siteId, {
+                    totalFiles,
+                    totalVersions,
+                    versionsRemoved: versionsToRemove,
+                    storageSaved: totalStorageSavings,
+                    storageSavedBytes: totalStorageSavingsBytes,
+                    versionsToKeep
+                });
+            }
+
+            return results;
 
         } catch (error) {
             console.error('Error in bulk cleanup:', error);
