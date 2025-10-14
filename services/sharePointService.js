@@ -328,13 +328,15 @@ class SharePointService {
     };
 
     bulkCleanupSite = async (siteId, versionsToKeep = 10, dryRun = false, progressCallback = null) => {
+        const scanStartTime = Date.now();
+        
         try {
             let scanData;
             // Cache key is alleen gebaseerd op site ID, niet op dryRun of versionsToKeep
             const cacheKey = `site-${siteId}`;
             const now = Date.now();
             
-            console.log(`Cache lookup for site ${siteId} (dry run: ${dryRun})`);
+            console.log(`\n[START] Bulk cleanup for site ${siteId} (dry run: ${dryRun}, keep: ${versionsToKeep} versions)`);
 
             // Check of we gecachte scan data hebben
             if (this.siteScanCache.has(cacheKey)) {
@@ -393,7 +395,7 @@ class SharePointService {
                 return false;
             };
 
-            const withBackoff = async (fn, { retries = 4, baseDelay = 250, timeoutMs = 30000 } = {}) => {
+            const withBackoff = async (fn, { retries = 5, baseDelay = 250, timeoutMs = 120000 } = {}) => {
                 let attempt = 0;
                 while (true) {
                     try {
@@ -407,24 +409,40 @@ class SharePointService {
                         return await run();
                     } catch (err) {
                         const code = err?.statusCode || err?.status;
-                        const retryable = code === 429 || code === 503;
+                        const retryable = code === 429 || code === 503 || err.message === 'Timeout';
                         if (!retryable || attempt >= retries || checkCancelled()) throw err;
                         const delay = baseDelay * Math.pow(2, attempt);
+                        console.log(`Retry attempt ${attempt + 1}/${retries} after ${delay}ms delay (error: ${err.message})`);
                         await new Promise(r => setTimeout(r, delay));
                         attempt++;
                     }
                 }
             };
 
-            const runWithConcurrency = async (items, worker, limit = 8) => {
+            const runWithConcurrency = async (items, worker, limit = 5) => {
                 const results = [];
                 let index = 0;
+                let completed = 0;
+                const total = items.length;
+                
                 const runners = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
                     while (index < items.length && !checkCancelled()) {
                         const current = items[index++];
                         try {
                             const r = await worker(current);
                             results.push(r);
+                            completed++;
+                            
+                            // Update progress elke 10 items of bij laatste item
+                            if (completed % 10 === 0 || completed === total) {
+                                if (progressCallback?.onProgress) {
+                                    progressCallback.onProgress({
+                                        completed,
+                                        total,
+                                        percentage: Math.round((completed / total) * 100)
+                                    });
+                                }
+                            }
                         } catch (e) {
                             console.warn('Worker error:', e.message || e);
                         }
@@ -456,25 +474,29 @@ class SharePointService {
                         .select(baseSelect)
                         .top(200)
                         .get();
-                }, { timeoutMs: 45000 });
+                }, { timeoutMs: 120000 });
                 
                 all.push(...(first.value || []));
                 let next = first['@odata.nextLink'];
                 let totalFetched = all.length;
+                let pageCount = 1;
                 
                 while (next && !checkCancelled()) {
+                    pageCount++;
                     const page = await withBackoff(() => this.graphClient
                         .api(next.replace('https://graph.microsoft.com/v1.0', ''))
-                        .get(), { timeoutMs: 45000 });
+                        .get(), { timeoutMs: 120000 });
                     all.push(...(page.value || []));
-                    totalFetched += page.value.length;
+                    totalFetched += page.value?.length || 0;
                     
                     if (progressCallback?.onFolderProcessing) {
                         const displayPath = currentPath || 'root';
-                        progressCallback.onFolderProcessing(`Scanning ${displayPath} (${totalFetched} items found)`);
+                        progressCallback.onFolderProcessing(`Scanning ${displayPath} (${totalFetched} items, page ${pageCount})`);
                     }
                     next = page['@odata.nextLink'];
                 }
+                
+                console.log(`Fetched ${totalFetched} items from ${currentPath || 'root'} in ${pageCount} pages`);
                 return all;
             };
 
@@ -517,8 +539,10 @@ class SharePointService {
                     return;
                 }
                 
+                const startTime = Date.now();
+                
                 try {
-                    console.log(`Processing folder: ${folderPath}`);
+                    console.log(`[SCAN] Processing folder: ${folderPath}`);
                     
                     if (progressCallback?.onFolderProcessing) {
                         progressCallback.onFolderProcessing(folderPath);
@@ -531,17 +555,12 @@ class SharePointService {
                     const folderCacheKey = `${driveId}:${folderPath}`;
                     
                     if (scanData.items[folderCacheKey]) {
-                        console.log(`Using cached items for folder: ${folderPath}`);
                         const cachedItems = scanData.items[folderCacheKey];
                         fileItems = cachedItems.files;
                         folderItems = cachedItems.folders;
+                        console.log(`[CACHE] Using cached data: ${fileItems.length} files, ${folderItems.length} folders`);
                     } else {
-                        console.log(`Scanning folder: ${folderPath}`);
                         const value = await fetchAllChildren(driveId, folderId, folderPath);
-                        
-                        if (progressCallback?.onFolderProcessing) {
-                            progressCallback.onFolderProcessing(`${folderPath} (${value.length} items processed)`);
-                        }
                         
                         fileItems = value.filter(i => i.file && !shouldSkipFile(i));
                         folderItems = value.filter(i => i.folder && !shouldSkipFolder(i));
@@ -549,8 +568,10 @@ class SharePointService {
                         // Log het aantal overgeslagen items voor debugging
                         const skippedFiles = value.filter(i => i.file && shouldSkipFile(i)).length;
                         const skippedFolders = value.filter(i => i.folder && shouldSkipFolder(i)).length;
-                        if (skippedFiles > 0 || skippedFolders > 0) {
-                            console.log(`Skipped ${skippedFiles} files and ${skippedFolders} folders in ${folderPath}`);
+                        console.log(`[SCAN] Found ${fileItems.length} files, ${folderItems.length} folders (skipped: ${skippedFiles} files, ${skippedFolders} folders)`);
+                        
+                        if (progressCallback?.onFolderProcessing) {
+                            progressCallback.onFolderProcessing(`${folderPath} (${fileItems.length} files, ${folderItems.length} folders)`);
                         }
 
                         // Sla de items op in de scanData voor hergebruik
@@ -570,7 +591,6 @@ class SharePointService {
                             
                             if (scanData.itemVersions && scanData.itemVersions[versionCacheKey]) {
                                 versions = scanData.itemVersions[versionCacheKey];
-                                console.log(`Using cached version info for item ${item.name}`);
                             } else {
                                 // BELANGRIJK: De /versions endpoint geeft ALLEEN historische versies terug.
                                 // De HUIDIGE/ACTIEVE versie van het bestand zit NIET in deze lijst.
@@ -579,7 +599,7 @@ class SharePointService {
                                 versions = await withBackoff(() => this.graphClient
                                     .api(`/drives/${driveId}/items/${item.id}/versions`)
                                     .select('id,size,lastModifiedDateTime')
-                                    .get(), { timeoutMs: 30000 });
+                                    .get(), { timeoutMs: 60000 });
                                 
                                 // Cache de versie informatie
                                 if (!scanData.itemVersions) scanData.itemVersions = {};
@@ -653,32 +673,46 @@ class SharePointService {
                         }
                         await processFolder(driveId, sub.id, `${folderPath}/${sub.name}`);
                     }, 4);
+                    
+                    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                    console.log(`[DONE] Processed ${folderPath} in ${elapsed}s (${fileItems.length} files)`);
                 } catch (folderError) {
-                    console.warn(`Error processing folder ${folderPath}:`, folderError);
+                    console.error(`[ERROR] Failed to process folder ${folderPath}:`, folderError.message);
                 }
             };
 
             // Process all libraries and their contents recursively
+            const totalLibraries = scanData.libraries.length;
+            let processedLibraries = 0;
+            
             for (const library of scanData.libraries) {
                 if (isCancelled) {
                     break;
                 }
 
                 if (this.shouldSkipLibrary(library.name)) {
-                    console.log(`Skipping library (matches skip pattern): ${library.name}`);
+                    console.log(`[SKIP] Library: ${library.name} (matches skip pattern)`);
                     continue;
+                }
+                
+                processedLibraries++;
+                console.log(`\n[LIBRARY ${processedLibraries}/${totalLibraries}] Processing: ${library.name}`);
+                
+                if (progressCallback?.onFolderProcessing) {
+                    progressCallback.onFolderProcessing(`[${processedLibraries}/${totalLibraries}] ${library.name}`);
                 }
                 
                 try {
                     await processFolder(library.id, 'root', library.name);
+                    console.log(`[LIBRARY ${processedLibraries}/${totalLibraries}] ✓ Completed: ${library.name}`);
                 } catch (libraryError) {
-                    console.warn(`Error processing library ${library.name}:`, libraryError);
+                    console.error(`[LIBRARY ${processedLibraries}/${totalLibraries}] ✗ Error in ${library.name}:`, libraryError.message);
                     continue;
                 }
             }
             
             if (isCancelled) {
-                console.log('Bulk cleanup process was cancelled by user');
+                console.log('[CANCELLED] Bulk cleanup process was cancelled by user');
             }
 
             // Update cache with latest scan data
@@ -692,13 +726,26 @@ class SharePointService {
             const totalStorageSavings = this.formatFileSize(totalStorageSavingsBytes);
 
             // Maak resultaat object
+            const totalElapsedSeconds = ((Date.now() - scanStartTime) / 1000).toFixed(1);
+            
+            console.log('\n' + '='.repeat(60));
+            console.log(`[SUMMARY] Bulk Cleanup ${dryRun ? '(DRY RUN)' : 'COMPLETED'}`);
+            console.log('='.repeat(60));
+            console.log(`Total files processed: ${totalFiles}`);
+            console.log(`Total versions found: ${totalVersions}`);
+            console.log(`Versions to remove: ${versionsToRemove}`);
+            console.log(`Storage savings: ${this.formatFileSize(totalStorageSavingsBytes)}`);
+            console.log(`Time elapsed: ${totalElapsedSeconds}s`);
+            console.log(`Libraries processed: ${processedLibraries}/${totalLibraries}`);
+            console.log('='.repeat(60) + '\n');
+            
             const results = {
                 success: true,
                 dryRun,
                 totalFiles,
                 totalVersions,
                 versionsToRemove,
-                totalStorageSavings,
+                totalStorageSavings: this.formatFileSize(totalStorageSavingsBytes),
                 totalStorageSavingsBytes,
                 details,
                 usedCache: !!scanData,

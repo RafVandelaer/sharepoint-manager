@@ -282,7 +282,7 @@ router.get('/sites/:siteId/files', requireAuth, async (req, res) => {
                 if (!isCancelled) {
                     res.write(`: heartbeat\n\n`);
                 }
-            }, 15000);
+            }, 10000); // Elke 10 seconden een heartbeat
             
             try {
                 // Eerst proberen we echte site details op te halen om te controleren of de site bestaat en toegankelijk is
@@ -466,7 +466,7 @@ router.post('/sites/:siteId/cleanup', requireAuth, async (req, res) => {
                 if (!isCancelled) {
                     res.write(`: heartbeat\n\n`);
                 }
-            }, 15000);
+            }, 10000); // Elke 10 seconden een heartbeat
 
             // Controleer of de client de verbinding verbreekt
             req.on('close', () => {
@@ -539,7 +539,7 @@ router.get('/sites/:siteId/cleanup', requireAuth, async (req, res) => {
 
             const heartbeat = setInterval(() => {
                 if (!isCancelled) res.write(`: heartbeat\n\n`);
-            }, 15000);
+            }, 10000); // Elke 10 seconden een heartbeat
 
             req.on('close', () => {
                 isCancelled = true;
