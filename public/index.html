@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SharePoint Manager</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="status.css">
+    <link rel="stylesheet" href="history.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fab fa-microsoft"></i> SharePoint Manager</h1>
+                <div class="auth-status" id="authStatus">
+                    <button id="loginBtn" class="btn btn-primary">
+                        <i class="fas fa-sign-in-alt"></i> Inloggen
+                    </button>
+                    <div id="userInfo" class="user-info" style="display: none;">
+                        <span id="userName">Ingelogd</span>
+                        <button id="logoutBtn" class="btn btn-secondary">
+                            <i class="fas fa-sign-out-alt"></i> Uitloggen
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Demo Mode Banner -->
+        <div id="demoBanner" class="demo-banner" style="display: none;">
+            <div class="demo-content">
+                <i class="fas fa-info-circle"></i>
+                <span><strong>Demo Modus:</strong> Klik op "Inloggen" rechtsboven voor echte SharePoint data.</span>
+                <button id="closeDemoBanner" class="demo-close">×</button>
+            </div>
+        </div>
+
+        <main class="main-content">
+            <!-- Setup Instructions -->
+            <div id="setupSection" class="setup-section">
+                <div class="card">
+                    <h2><i class="fas fa-cog"></i> App Registratie Setup</h2>
+                    <div class="setup-steps">
+                        <div class="step">
+                            <h3><i class="fas fa-cloud"></i> 1. Azure App Registratie</h3>
+                            <p>Maak een nieuwe app registratie aan in Azure Portal:</p>
+                            <ul>
+                                <li><i class="fas fa-link"></i> Ga naar <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank">Azure Portal - App registrations</a></li>
+                                <li><i class="fas fa-plus-circle"></i> Klik op "New registration"</li>
+                                <li><i class="fas fa-tag"></i> Naam: "SharePoint Manager"</li>
+                                <li><i class="fas fa-reply"></i> Redirect URI: <code>http://localhost:3000/auth/callback</code></li>
+                            </ul>
+                        </div>
+                        <div class="step">
+                            <h3><i class="fas fa-key"></i> 2. API Permissions</h3>
+                            <p>Je moet <strong>Application permissions</strong> kiezen (niet Delegated permissions):</p>
+                            <div class="permissions-info">
+                                <div class="perm-type">
+                                    <strong>Application permissions</strong><br>
+                                    <span style="color: #0078d4;">Je applicatie draait als service en heeft toegang tot alle SharePoint sites in de tenant, zonder dat een gebruiker is ingelogd.</span>
+                                </div>
+                                <div class="perm-type" style="margin-top: 1rem;">
+                                    <strong>Delegated permissions</strong><br>
+                                    <span style="color: #dc3545;">Niet geschikt voor deze tool. Vereist een ingelogde gebruiker en geeft alleen toegang tot sites waar die gebruiker rechten heeft.</span>
+                                </div>
+                            </div>
+                            <ul style="margin-top: 1rem;">
+                                <li><code>Sites.Read.All</code> <span style="color: #0078d4;">(Application)</span></li>
+                                <li><code>Sites.ReadWrite.All</code> <span style="color: #0078d4;">(Application)</span></li>
+                                <li><code>Sites.Manage.All</code> <span style="color: #0078d4;">(Application)</span></li>
+                            </ul>
+                            <p><strong>Vergeet niet om <span style="color: #0078d4;">admin consent</span> te geven!</strong></p>
+                        </div>
+                        <div class="step">
+                            <h3><i class="fas fa-lock"></i> 3. Client Secret</h3>
+                            <p>Maak een client secret aan en kopieer de waarde.</p>
+                        </div>
+                        <div class="step">
+                            <h3><i class="fas fa-cogs"></i> 4. Environment Configuration</h3>
+                            <p>Maak een <code>.env</code> bestand aan met:</p>
+                            <pre><code>TENANT_ID=jouw-tenant-id
+CLIENT_ID=jouw-client-id
+CLIENT_SECRET=jouw-client-secret
+PORT=3000
+REDIRECT_URI=http://localhost:3000/auth/callback
+GRAPH_API_URL=https://graph.microsoft.com/v1.0</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loadingSection" class="loading-section" style="display: none;">
+                <div class="loading-spinner">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Bezig met laden...</p>
+                </div>
+            </div>
+
+            <!-- Cleanup Results Page -->
+            <div id="cleanupSimulationPage" class="page" style="display: none;">
+                <div class="page-header">
+                    <button class="btn btn-secondary" id="backToSites">
+                        <i class="fas fa-arrow-left"></i> Terug naar Sites
+                    </button>
+                    <h2 class="section-title"><i class="fas fa-eye"></i> Opschoning Simulatie</h2>
+                </div>
+                
+                <div class="simulation-content">
+                    <!-- Action selection -->
+                    <div class="action-selection">
+                        <h3>Opschoning configureren</h3>
+                        <div class="cleanup-settings">
+                            <div class="setting-group">
+                                <label for="versionsToKeep">Aantal te behouden versies:</label>
+                                <div class="input-with-buttons">
+                                    <button class="btn btn-icon decrement-btn" id="decrementVersions">
+                                        <i class="fas fa-minus"></i>
+                                    </button>
+                                    <input type="number" id="versionsToKeep" value="3" min="1" max="20">
+                                    <button class="btn btn-icon increment-btn" id="incrementVersions">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <h3>Kies een actie</h3>
+                        <div class="action-options">
+                            <button id="startDryRunBtn" class="btn btn-primary">
+                                <i class="fas fa-eye"></i> Start Simulatie (Dry Run)
+                            </button>
+                            <button id="startRealCleanupBtn" class="btn btn-danger">
+                                <i class="fas fa-trash"></i> Start Echte Opschoning
+                            </button>
+                            <button id="showHistoryBtn" class="btn btn-info">
+                                <i class="fas fa-history"></i> Toon Geschiedenis
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- History Modal container - will be populated dynamically -->
+                    <div id="historyModalContainer"></div>
+                    
+                    <!-- Progress tracking -->
+                    <div id="progressSection" class="progress-section" style="display: none;">
+                        <h3>Voortgang</h3>
+                        <div class="progress-container">
+                            <div class="progress-bar">
+                                <div id="progressIndicator" class="progress-indicator" style="width: 0%"></div>
+                            </div>
+                            <div class="progress-text" id="progressText">0%</div>
+                        </div>
+                        <div class="status-message" id="statusMessage">Wachten om te starten...</div>
+                        <div class="current-folder">
+                            <div class="folder-icon">
+                                <i class="fas fa-folder-open"></i>
+                            </div>
+                            <div class="folder-path" id="currentFolderPath">Nog geen map geselecteerd</div>
+                        </div>
+                    </div>
+                    
+                    <div class="summary-info">
+                        <h3>Simulatie Resultaten</h3>
+                        <div class="summary-stats">
+                            <div class="stat-item">
+                                <span class="stat-value" id="dryRunTotalFiles">0</span>
+                                <span class="stat-label">Totaal bestanden</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-value" id="dryRunTotalVersions">0</span>
+                                <span class="stat-label">Totaal versies</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-value" id="dryRunVersionsToRemove">0</span>
+                                <span class="stat-label">Te verwijderen versies</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-value" id="dryRunStorageSavings">0 MB</span>
+                                <span class="stat-label">Opslagbesparing</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="results-container">
+                        <div class="files-panel">
+                            <h3>Bestanden met oude versies</h3>
+                            <div class="files-list" id="dryRunFilesList">
+                                <!-- Files will be listed here -->
+                            </div>
+                        </div>
+                        
+                        <div class="versions-panel">
+                            <h3>Versie Details</h3>
+                            <div class="file-details" id="dryRunFileDetails">
+                                <div class="select-file-message">
+                                    <i class="fas fa-file-alt"></i>
+                                    <div>
+                                        <h4>Selecteer een bestand</h4>
+                                        <p>Klik op een bestand om de versie details te zien</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <div class="left-actions">
+                            <button id="cancelDryRun" class="btn btn-secondary">
+                                <i class="fas fa-times"></i> Annuleren
+                            </button>
+                        </div>
+                        
+                        <div class="right-actions">
+                            <div id="dryRunActions" style="display: none;">
+                                <button id="runAgainBtn" class="btn btn-primary">
+                                    <i class="fas fa-redo"></i> Opnieuw Simuleren
+                                </button>
+                                <button id="confirmCleanup" class="btn btn-danger">
+                                    <i class="fas fa-broom"></i> Start Echte Opschoning
+                                </button>
+                            </div>
+                            <button id="stopCleanupBtn" class="btn btn-warning" style="display: none;">
+                                <i class="fas fa-stop"></i> Stop Proces
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sites Dashboard -->
+            <div id="sitesSection" class="sites-section" style="display: none;">
+                <div class="search-container">
+                    <div class="search-box">
+                        <input type="text" id="siteSearch" placeholder="Zoek sites...">
+                        <button class="search-button">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="dashboard-controls">
+                    <div class="left-controls">
+                        <button id="refreshSitesBtn" class="btn btn-secondary">
+                            <i class="fas fa-refresh"></i> Vernieuwen
+                        </button>
+                        <button id="selectAllSitesBtn" class="btn btn-secondary">
+                            <i class="fas fa-check-double"></i> Selecteer Alles
+                        </button>
+                        <button id="deselectAllSitesBtn" class="btn btn-secondary" style="display: none;">
+                            <i class="fas fa-times"></i> Deselecteer Alles
+                        </button>
+                    </div>
+                </div>
+
+                <div class="sites-grid" id="sitesGrid">
+                    <!-- Sites worden hier als uitklapbare lijst getoond -->
+                </div>
+            </div>
+
+            <!-- Site Details Modal -->
+            <div id="siteModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 id="modalTitle">Site Details</h2>
+                        <button class="modal-close" id="closeModal">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="siteDetails" class="site-info">
+                            <!-- Site details will be loaded here -->
+                        </div>
+                        
+                        <div class="cleanup-section">
+                            <h3><i class="fas fa-broom"></i> Versie Opschoning</h3>
+                            <div class="cleanup-controls">
+                                <div class="form-group">
+                                    <label for="versionsToKeep">
+                                        <i class="fas fa-layer-group"></i> 
+                                        Aantal versies om te behouden:
+                                    </label>
+                                    <input type="number" 
+                                           id="versionsToKeep" 
+                                           value="10" 
+                                           min="1" 
+                                           max="100"
+                                           class="form-control">
+                                    <small class="form-help">
+                                        Kies hoeveel recente versies je wilt behouden per document
+                                    </small>
+                                </div>
+                                
+                                <div class="cleanup-actions">
+                                    <button id="dryRunBtn" class="btn btn-secondary">
+                                        <i class="fas fa-eye"></i> Simuleer Opschoning
+                                    </button>
+                                    <button id="cleanupBtn" class="btn btn-danger">
+                                        <i class="fas fa-broom"></i> Start Opschoning
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="cleanupResults" class="cleanup-results" style="display: none;">
+                                <div class="cleanup-summary">
+                                    <div class="summary-item">
+                                        <div class="summary-value" id="totalFiles">-</div>
+                                        <div class="summary-label">Totaal Bestanden</div>
+                                    </div>
+                                    <div class="summary-item">
+                                        <div class="summary-value" id="totalVersions">-</div>
+                                        <div class="summary-label">Totaal Versies</div>
+                                    </div>
+                                    <div class="summary-item">
+                                        <div class="summary-value" id="versionsToRemove">-</div>
+                                        <div class="summary-label">Te Verwijderen</div>
+                                    </div>
+                                </div>
+                                <div class="cleanup-details" id="cleanupDetails">
+                                    <!-- Detailed results will be shown here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dry Run Modal -->
+            <div id="dryRunModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>
+                            <i class="fas fa-eye"></i> 
+                            Opschoning Simulatie
+                        </h2>
+                        <button class="modal-close" id="closeDryRunModal">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="summary-info">
+                            <h3>Overzicht</h3>
+                            <div class="summary-stats">
+                                <div>Totaal bestanden: <span id="dryRunTotalFiles">0</span></div>
+                                <div>Totaal versies: <span id="dryRunTotalVersions">0</span></div>
+                                <div>Te verwijderen versies: <span id="dryRunVersionsToRemove">0</span></div>
+                            </div>
+                        </div>
+                        
+                        <div class="files-list" id="dryRunFilesList">
+                            <!-- Files will be listed here -->
+                        </div>
+                        
+                        <div class="file-details" id="dryRunFileDetails">
+                            <div class="loading-indicator" style="display: none;">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                Bezig met laden...
+                            </div>
+                            <!-- Version details will be shown here -->
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="cancelDryRun" class="btn btn-secondary">
+                            <i class="fas fa-times"></i> Annuleren
+                        </button>
+                        <button id="confirmCleanup" class="btn btn-danger">
+                            <i class="fas fa-broom"></i> Start Opschoning
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error Messages -->
+            <div id="errorMessage" class="error-message" style="display: none;">
+                <div class="error-content">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span id="errorText"></span>
+                    <button id="closeError" class="close-btn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Success Messages -->
+            <div id="successMessage" class="success-message" style="display: none;">
+                <div class="success-content">
+                    <i class="fas fa-check-circle"></i>
+                    <span id="successText"></span>
+                    <button id="closeSuccess" class="close-btn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Bulk Operation Progress Overlay -->
+            <div id="bulkProgressOverlay" class="bulk-progress-overlay" style="display: none;">
+                <div class="bulk-progress-content">
+                    <div class="bulk-progress-header">
+                        <h3><i class="fas fa-tasks"></i> <span id="bulkProgressTitle">Processing Sites</span></h3>
+                    </div>
+                    <div class="bulk-progress-body">
+                        <div class="bulk-status-message" id="bulkStatusMessage">Initializing...</div>
+                        <div class="bulk-current-folder">
+                            <div class="bulk-folder-icon">
+                                <i class="fas fa-folder-open"></i>
+                            </div>
+                            <div class="bulk-folder-path" id="bulkCurrentFolder">Waiting to start...</div>
+                        </div>
+                        <div class="bulk-progress-bar-container">
+                            <div class="bulk-progress-bar">
+                                <div id="bulkProgressBar" class="bulk-progress-fill" style="width: 0%"></div>
+                            </div>
+                            <div class="bulk-progress-text" id="bulkProgressText">0%</div>
+                        </div>
+                        <div class="bulk-results" id="bulkResults" style="display: none;">
+                            <h4>Results:</h4>
+                            <div class="bulk-stats">
+                                <div class="bulk-stat">
+                                    <span class="bulk-stat-label">Sites processed:</span>
+                                    <span class="bulk-stat-value" id="bulkSitesProcessed">0</span>
+                                </div>
+                                <div class="bulk-stat">
+                                    <span class="bulk-stat-label">Total files:</span>
+                                    <span class="bulk-stat-value" id="bulkTotalFiles">0</span>
+                                </div>
+                                <div class="bulk-stat">
+                                    <span class="bulk-stat-label">Versions to remove:</span>
+                                    <span class="bulk-stat-value" id="bulkVersionsToRemove">0</span>
+                                </div>
+                                <div class="bulk-stat">
+                                    <span class="bulk-stat-label">Storage savings:</span>
+                                    <span class="bulk-stat-value" id="bulkStorageSavings">0 MB</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bulk-progress-footer">
+                        <div class="left-actions">
+                            <button id="cancelBulkScan" class="btn btn-secondary">
+                                <i class="fas fa-times"></i> Cancel
+                            </button>
+                        </div>
+                        <div class="right-actions">
+                            <button id="startBulkCleanupFromResults" class="btn btn-danger" style="display: none;">
+                                <i class="fas fa-broom"></i> Start Cleanup
+                            </button>
+                            <button id="closeBulkProgress" class="btn btn-primary" style="display: none;">
+                                <i class="fas fa-check"></i> Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+            <script src="js/index.js" type="module"></script>
+    <script src="js/ui.js" type="module"></script>
+    <script src="js/api.js" type="module"></script>
+    <script src="js/cleanup.js" type="module"></script>
+    <script src="js/state.js" type="module"></script>
+    <script src="js/sse.js" type="module"></script>
+    <script src="js/history.js" type="module"></script>
+    <script src="app.js" type="module"></script>
+</body>
+</html>

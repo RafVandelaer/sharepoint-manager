@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>localStorage Inspector</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 10px 20px;
+            background: #0078d4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #005a9e;
+        }
+        button.danger {
+            background: #d13438;
+        }
+        button.danger:hover {
+            background: #a4373a;
+        }
+        button.success {
+            background: #107c10;
+        }
+        button.success:hover {
+            background: #0a6e0c;
+        }
+        .storage-items {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .storage-item {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            word-break: break-all;
+        }
+        .storage-item-key {
+            font-weight: bold;
+            color: #0078d4;
+            margin-bottom: 5px;
+        }
+        .storage-item-value {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 3px;
+            white-space: pre-wrap;
+        }
+        .empty {
+            color: #999;
+            font-style: italic;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .status.info {
+            background: #e7f3ff;
+            color: #004578;
+            border-left: 4px solid #0078d4;
+        }
+        .status.success {
+            background: #dffcf0;
+            color: #107c10;
+            border-left: 4px solid #107c10;
+        }
+        .status.error {
+            background: #fed9cc;
+            color: #d13438;
+            border-left: 4px solid #d13438;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 localStorage Inspector</h1>
+        
+        <div class="controls">
+            <button onclick="refreshData()">🔄 Vernieuwen</button>
+            <button class="success" onclick="createTestData()">📝 Test Data Aanmaken</button>
+            <button class="danger" onclick="clearAllStorage()">🗑️ Alles Wissen</button>
+            <button class="danger" onclick="clearBulkState()">🗑️ Bulk State Wissen</button>
+        </div>
+        
+        <div id="status"></div>
+        
+        <h2>localStorage Inhoud:</h2>
+        <div id="storageItems" class="storage-items"></div>
+    </div>
+
+    <script>
+        function getStorageData() {
+            const data = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                data[key] = localStorage.getItem(key);
+            }
+            return data;
+        }
+
+        function displayStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.innerHTML = `<div class="status ${type}">${message}</div>`;
+            setTimeout(() => {
+                statusEl.innerHTML = '';
+            }, 3000);
+        }
+
+        function refreshData() {
+            const storageItems = document.getElementById('storageItems');
+            const data = getStorageData();
+            
+            if (Object.keys(data).length === 0) {
+                storageItems.innerHTML = '<div class="empty">Geen items in localStorage</div>';
+                return;
+            }
+
+            let html = '';
+            for (const [key, value] of Object.entries(data)) {
+                let displayValue = value;
+                
+                // Try to format JSON
+                try {
+                    const parsed = JSON.parse(value);
+                    displayValue = JSON.stringify(parsed, null, 2);
+                } catch (e) {
+                    // Not JSON, use as-is
+                }
+
+                html += `
+                    <div class="storage-item">
+                        <div class="storage-item-key">📌 ${escapeHtml(key)}</div>
+                        <div class="storage-item-value">${escapeHtml(displayValue)}</div>
+                        <button onclick="copyToClipboard('${escapeHtml(key)}', '${escapeHtml(displayValue).replace(/'/g, "\\'")}')">Kopiëren</button>
+                        <button class="danger" onclick="removeItem('${key}')">Verwijderen</button>
+                    </div>
+                `;
+            }
+
+            storageItems.innerHTML = html;
+            
+            // Check for bulk state
+            const bulkState = localStorage.getItem('bulkDryRunState');
+            if (bulkState) {
+                try {
+                    const state = JSON.parse(bulkState);
+                    const message = `✅ Onvoltooide bulk scan gevonden! ${state.completedSites?.length || 0}/${state.sites?.length || 0} sites gescand`;
+                    displayStatus(message, 'info');
+                } catch (e) {
+                    console.error('Error parsing bulk state:', e);
+                }
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function copyToClipboard(key, value) {
+            const text = `${key}: ${value}`;
+            navigator.clipboard.writeText(text).then(() => {
+                displayStatus(`✅ Gekopieerd naar klembord!`, 'success');
+            });
+        }
+
+        function removeItem(key) {
+            if (confirm(`Weet je zeker dat je "${key}" wilt verwijderen?`)) {
+                localStorage.removeItem(key);
+                refreshData();
+                displayStatus(`✅ "${key}" verwijderd`, 'success');
+            }
+        }
+
+        function clearAllStorage() {
+            if (confirm('Weet je zeker dat je ALLES wilt wissen? Dit kan niet ongedaan gemaakt worden!')) {
+                localStorage.clear();
+                refreshData();
+                displayStatus('✅ Alle localStorage data gewist', 'success');
+            }
+        }
+
+        function clearBulkState() {
+            if (confirm('Weet je zeker dat je de bulk scan state wilt wissen?')) {
+                localStorage.removeItem('bulkDryRunState');
+                refreshData();
+                displayStatus('✅ Bulk dry run state gewist', 'success');
+            }
+        }
+
+        function createTestData() {
+            const testState = {
+                sites: ['site1', 'site2', 'site3', 'site4', 'site5'],
+                versionsToKeep: 3,
+                completedSites: ['site1', 'site2'],
+                results: {
+                    totalFiles: 1500,
+                    totalVersions: 4200,
+                    versionsToRemove: 1200,
+                    storageSavingsBytes: 5368709120
+                },
+                timestamp: Date.now()
+            };
+            
+            localStorage.setItem('bulkDryRunState', JSON.stringify(testState));
+            refreshData();
+            displayStatus('✅ Test data aangemaakt! Refresh de app om de resumption prompt te zien.', 'success');
+        }
+
+        // Initial load
+        refreshData();
+        
+        // Auto-refresh every 2 seconds
+        setInterval(refreshData, 2000);
+    </script>
+</body>
+</html>

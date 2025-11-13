@@ -76,7 +76,7 @@ dist
 
 # Gatsby files
 .cache/
-public
+# public  # DISABLED: In this project, public/ contains source code, not build output
 
 # Storybook build outputs
 .out

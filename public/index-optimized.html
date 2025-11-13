@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SharePoint Versie Manager</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>SharePoint Versie Manager</h1>
+            <div id="authSection">
+                <button id="loginBtn" style="display: none;">Inloggen</button>
+                <button id="logoutBtn" style="display: none;">Uitloggen</button>
+            </div>
+        </header>
+
+        <main>
+            <!-- Error/Success Messages -->
+            <div id="messages">
+                <div id="errorMessage" class="message error" style="display: none;">
+                    <span id="errorText"></span>
+                    <button id="closeError" class="close-btn">&times;</button>
+                </div>
+                <div id="successMessage" class="message success" style="display: none;">
+                    <span id="successText"></span>
+                    <button id="closeSuccess" class="close-btn">&times;</button>
+                </div>
+            </div>
+
+            <!-- Sites Section -->
+            <section id="sitesSection">
+                <div class="section-header">
+                    <h2>SharePoint Sites</h2>
+                    <div class="section-controls">
+                        <button id="refreshSitesBtn" class="icon-button" title="Sites Vernieuwen">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <div class="search-container">
+                            <input type="text" id="siteSearch" placeholder="Zoek sites...">
+                            <i class="fas fa-search search-icon"></i>
+                        </div>
+                    </div>
+                </div>
+                <div id="sitesList" class="sites-grid"></div>
+            </section>
+
+            <!-- Cleanup Simulation Page -->
+            <section id="cleanupSimulationPage" style="display: none;">
+                <div class="section-header">
+                    <h2 class="section-title">Versie Opschoning Simulatie</h2>
+                    <button id="backToSites" class="secondary-button">
+                        <i class="fas fa-arrow-left"></i> Terug naar Sites
+                    </button>
+                </div>
+
+                <!-- Progress Section -->
+                <div id="progressSection" style="display: none;">
+                    <h3>Voortgang</h3>
+                    <div class="progress-container">
+                        <div id="progressIndicator" class="progress-bar"></div>
+                    </div>
+                    <p id="currentFolderPath" class="folder-path">Initialiseren...</p>
+                </div>
+
+                <!-- Results Section -->
+                <div id="dryRunResults">
+                    <div class="summary-section">
+                        <div class="version-summary">
+                            <div class="version-summary-item">
+                                <span class="version-label">Bestanden</span>
+                                <span class="version-count" id="dryRunTotalFiles">0</span>
+                            </div>
+                            <div class="version-summary-item">
+                                <span class="version-label">Versies</span>
+                                <span class="version-count" id="dryRunTotalVersions">0</span>
+                            </div>
+                            <div class="version-summary-item">
+                                <span class="version-label">Te Verwijderen</span>
+                                <span class="version-count remove" id="dryRunVersionsToRemove">0</span>
+                            </div>
+                            <div class="version-summary-item">
+                                <span class="version-label">Opslagbesparing</span>
+                                <span class="version-count" id="dryRunStorageSavings">Onbekend</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="results-container">
+                        <div class="files-list" id="dryRunFilesList"></div>
+                        <div class="file-details" id="dryRunFileDetails">
+                            <div class="no-file-selected">
+                                <i class="fas fa-file-alt"></i>
+                                <p>Selecteer een bestand om de versies te bekijken</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-buttons" id="dryRunActions">
+                    <button id="startRealCleanupBtn" class="primary-button">
+                        <i class="fas fa-check"></i> Start Echte Opschoning
+                    </button>
+                    <button id="cancelDryRun" class="secondary-button">
+                        <i class="fas fa-times"></i> Annuleren
+                    </button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Cleanup Confirmation Modal -->
+    <div id="confirmationModal" class="modal">
+        <div class="modal-content">
+            <h2><i class="fas fa-exclamation-triangle"></i> Bevestig Opschoning</h2>
+            <p>
+                U staat op het punt om oude versies van bestanden te verwijderen. 
+                De huidige versie wordt NOOIT verwijderd.
+                Deze actie kan niet ongedaan gemaakt worden.
+            </p>
+            <div class="modal-buttons">
+                <button id="confirmCleanup" class="danger-button">
+                    <i class="fas fa-check"></i> Ja, begin opschoning
+                </button>
+                <button id="cancelCleanup" class="secondary-button">
+                    <i class="fas fa-times"></i> Annuleren
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="js/app-optimized.js"></script>
+</body>
+</html>
