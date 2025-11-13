@@ -37,7 +37,33 @@ Een moderne web applicatie voor het beheren van SharePoint sites en het opschone
    cp .env.example .env
    ```
 
-## Azure App Registratie Setup
+## Snelstart (5 minuten)
+
+### Voor de haast:
+
+```bash
+# 1. Installeer
+npm install
+
+# 2. Configureer (vul je Azure credentials in)
+nano .env  # of open .env in je editor
+
+# 3. Start
+npm run dev
+
+# 4. Open http://localhost:3000
+# 5. Log in en start scannen!
+```
+
+### Demo Modus (zonder Azure setup)
+Wil je eerst testen? De app heeft test endpoints:
+```
+GET http://localhost:3000/api/sharepoint/sites/test
+```
+
+Dit geeft mock data voor demoing.
+
+## Configuratie
 
 ### Stap 1: Nieuwe App Registratie
 1. Ga naar [Azure Portal - App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
@@ -202,24 +228,287 @@ Dit is gegarandeerd door hoe de Microsoft Graph API werkt:
 ## Troubleshooting
 
 ### Algemene Problemen
-1. **"Authentication required" fout**
-   - Controleer of je .env bestand correct is geconfigureerd
-   - Verifieer dat de app registratie permissions heeft
 
-2. **"Failed to fetch SharePoint sites"**
-   - Controleer admin consent voor de app permissions
-   - Verifieer dat je tenant SharePoint sites heeft
+#### "Authentication required" fout
+- Controleer of je .env bestand correct is geconfigureerd
+- Verifieer dat de app registratie permissions heeft
+- Clear browser cache en cookies van `localhost:3000`
 
-3. **Versie opschoning werkt niet**
-   - Controleer of je `Sites.ReadWrite.All` permissions hebt
-   - Sommige sites kunnen extra permissions vereisen
+#### "Failed to fetch SharePoint sites"
+- Controleer admin consent voor de app permissions
+- Verifieer dat je tenant SharePoint sites heeft
+- Controleer of je gebruiker globale admin of SharePoint admin bent
 
-### Logging
-De applicatie logt belangrijke events naar de console. Start de applicatie met:
+#### Versie opschoning werkt niet
+- Controleer of je `Sites.ReadWrite.All` permissions hebt
+- Sommige sites kunnen extra permissions vereisen
+- Privé sites kunnen beperkte access hebben
+
+#### "Access denied" bij bulk dry run
+- Niet alle sites zijn even toegankelijk voor de app
+- De bulk dry run zal deze sites **skiippen** en doorgaan met andere sites
+- Controleer de site permissions in SharePoint Admin Center
+
+### Logging en Debugging
+
+#### Server-side logging
+Start de applicatie met:
 ```bash
-npm start
+npm run dev
 ```
-En bekijk de console output voor foutmeldingen.
+
+Controleer console output voor foutmeldingen en debug info. Logging toont:
+- Authenticatie events
+- API calls naar Microsoft Graph
+- Versie opschoning voortgang
+- Cache hits/misses
+
+#### Browser console logging
+Open DevTools (F12) en check de Browser Console voor:
+- API request/response details
+- Frontend state changes
+- UI updates
+
+#### Bulk dry run debugging
+Bij problamen met bulk dry run:
+1. Open DevTools Console
+2. Let op "Attempt X/3" berichten - dit toont retries
+3. Berichten met "⊘ Skipped" geven aan welke sites geen access hadden
+4. "✅ Site X completed" toont succesvolle sites
+
+### Performance Tips
+
+- **Bulk dry run voor veel sites**: De eerste scan kan lang duren (minutes)
+  - Scan wordt gecached voor 30 minuten
+  - Volgende scans op dezelfde site zijn veel sneller
+  - Gebruik 3 versies om te behouden voor snellere verwerking
+
+- **Browser performance**: 
+  - Sluit andere tabs die veel resources gebruiken
+  - Vernieuw de pagina als het traag wordt
+
+## Geavanceerd Gebruik
+
+### Bulk Dry Run Met Resumption
+
+De applicatie ondersteunt het hervatten van incomplete bulk dry runs:
+
+1. **Start een bulk dry run**
+   - Selecteer meerdere sites
+   - Klik "Bulk Dry Run"
+   - De voortgang wordt automatisch opgeslagen
+
+2. **Bij page refresh/crash**
+   - De app detecteert de incomplete run
+   - Vraagt of je wilt doorgaan waar je was gebleven
+   - Dit werkt zolang je dezelfde browser session gebruikt
+
+3. **Voortgang opslaan**
+   - Elke 2 sites wordt progress opgeslagen
+   - Bij errors wordt direct opgeslagen
+   - Lokaal opgeslagen via browser localStorage
+
+### API Documentatie
+
+#### Authenticatie Flow
+```
+POST /api/auth/login
+→ Retourneert: { authUrl: "https://login.microsoftonline.com/..." }
+→ Redirect naar Azure AD
+→ Callback: GET /auth/callback?code=XXX
+→ Retourneert: Session token in URL
+```
+
+#### Sites Ophalen
+```
+GET /api/sharepoint/sites
+Headers: { X-Session-ID: <sessionId> }
+→ Retourneert: [{ id, name, webUrl, ... }]
+```
+
+#### Bulk Cleanup (Dry Run)
+```
+POST /api/sharepoint/sites/{siteId}/cleanup?dryRun=true
+Headers: { X-Session-ID: <sessionId> }
+Body: { versionsToKeep: 3 }
+→ Retourneert: { 
+    success: true,
+    totalFiles: 42,
+    totalVersions: 127,
+    versionsToRemove: 85,
+    totalStorageSavings: "2.3 GB",
+    details: { ... }
+  }
+```
+
+### Caching Mechanismes
+
+De applicatie gebruikt meerdere caching lagen:
+
+| Cache | TTL | Doel |
+|-------|-----|------|
+| Token cache | Session | Authenticatie tokens |
+| Version cache | 5 min | File version info |
+| Site scan cache | 30 min | Complete site scans |
+| Cleanup history | N/A | Lokale audit trail |
+| Browser localStorage | N/A | Incomplete task state |
+
+### Error Recovery
+
+De applicatie implementeert automatische error recovery:
+
+1. **Exponential Backoff Retry**
+   - Tot 3 pogingen voor transiente errors (500, 503)
+   - Delays: 1s → 2s → 4s (max 10s)
+   - Permanente errors (401, 404) worden niet herhaald
+
+2. **Graceful Degradation**
+   - Gefaalde sites veroorzaken geen totale failure
+   - Scan gaat door met volgende sites
+   - Finale statistieken tonen succesvolle vs gefaalde sites
+
+3. **Session Recovery**
+   - Onvoltooide bulk runs worden opgeslagen
+   - Kan hervatten na page reload
+   - Tot 30 seconden timeout per site
+
+## Ondersteuning
+
+Bij vragen of problemen:
+1. Controleer deze README en troubleshooting sectie
+2. Check de browser console voor errors
+3. Raadpleeg de Azure Portal logs
+4. Maak een issue aan met gedetailleerde omschrijving
+
+## Veelgestelde Vragen (FAQ)
+
+### Q: Kan ik alle versies verwijderen?
+**A:** Nee, dit is veilig voorkomen! De huidige versie van het bestand wordt **ALTIJD** behouden. Je kan alleen historische versies verwijderen.
+
+### Q: Hoe lang duurt een bulk dry run?
+**A:** Dit hangt af van het aantal sites en bestanden:
+- Eerste run: 1-5 minuten (afhankelijk van tenant grootte)
+- Volgende runs: Veel sneller (cache hit)
+- Cache geldig voor 30 minuten
+
+### Q: Kan ik de bulk dry run onderbreken?
+**A:** Ja! Klik op "Stop Cleanup" knop. De voortgang wordt opgeslagen en je kan later hervatten.
+
+### Q: Wat als een site "Access denied" geeft?
+**A:** Dit is normaal voor sommige sites:
+- De bulk dry run zal deze sites skiippen
+- Andere sites worden normaal verwerkt
+- Controleer site permissions in SharePoint Admin Center
+
+### Q: Hoe reset ik mijn sessie?
+**A:** 
+- Log uit via de "Logout" knop
+- Of vernieuw de pagina en log opnieuw in
+- Browser cookies kunnen handmatig verwijderd worden via DevTools
+
+### Q: Kan ik versies van meerdere sites tegelijk verwijderen?
+**A:** Ja! Dit is precies wat de "Bulk Dry Run" en "Bulk Cleanup" features doen. Selecteer meerdere sites en start een bulk operatie.
+
+### Q: Zijn mijn tokens veilig?
+**A:** Ja:
+- Tokens worden in-memory opgeslagen (niet in cookies)
+- Vervallen na session timeout
+- Gebruikt HTTPS in productie (zelf in te stellen)
+- Client secret mag nooit naar frontend gestuurd worden
+
+### Q: Kan ik dit gebruiken voor productie?
+**A:** Ja, met voorzichtigheid:
+- Configureer HTTPS (use Let's Encrypt)
+- Deploy op veilige server
+- Bescherm de .env bestand
+- Enable audit logging
+- Backup kritieke data voordat je opschoning doet
+
+## Performance Optimalisatie
+
+### Frontend
+- Lazy loading van site lijsten (maximaal 50 tegelijk)
+- Virtual scrolling voor grote lijsten
+- CSS minimization in productie
+- Gzip compressie voor responses
+
+### Backend
+- Connection pooling voor Graph API
+- Request throttling (100ms minimum interval)
+- Exponential backoff retry logic
+- Batch processing (50 files per batch)
+- Caching van resultaten (5-30 min TTL)
+
+### Tips voor Snellere Verwerking
+1. Selecteer kleinere aantal sites per run
+2. Stel versionsToKeep lager in (3 in plaats van 10)
+3. Voer runs uit buiten piekuren
+4. Gebruik test sites eerst voor debugging
+
+## Best Practices
+
+### Veiligheid
+- ✅ Altijd `npm start` of `npm run dev` gebruiken (niet rechtstreeks node server.js)
+- ✅ `.env` bestand in `.gitignore` toevoegen (geheim!)
+- ✅ Regelmatig admin consent vernieuwing checken
+- ✅ Test eerst met dry run voordat je echt versies verwijdert
+- ✅ Backup kritieke data
+
+### Efficiëntie
+- ✅ Groepeer site cleanups om servers niet te overbelasten
+- ✅ Voer bulk operations uit in offpiek uren
+- ✅ Controleer cache status vóór herhaalde runs
+- ✅ Monitor Graph API quotas in Azure Portal
+
+### Maintenance
+- ✅ Update Node.js en dependencies regelmatig
+- ✅ Review server logs voor errors
+- ✅ Clear browser cache als je UI problemen hebt
+- ✅ Verwijder oude localStorage data (DevTools → Application)
+
+## Architectuur Overwegingen
+
+### Warum Vanilla JavaScript?
+- Geen complexe build pipeline vereist
+- Snelle development cycle
+- Laag overhead voor eenvoudige app
+- Gemakkelijk debuggen
+
+### Waarom Server-Sent Events?
+- Real-time progress updates voor lange operaties
+- One-directional (server → client)
+- Perfekt voor status/monitoring streams
+- Auto-reconnect built-in
+
+### Waarom MSAL?
+- Officiële Microsoft authentication library
+- Token refresh automatisch
+- Multi-tenant support
+- Best practices built-in
+
+## Projectplanning & Roadmap
+
+### Voltooid ✅
+- [x] Azure AD authenticatie
+- [x] Site discovery en selectie
+- [x] Single site versie cleanup
+- [x] Bulk versie cleanup
+- [x] Dry run testing
+- [x] Progress tracking
+- [x] Error recovery
+- [x] Incomplete task resumption
+- [x] Rate limiting & throttling
+- [x] Graceful error handling
+
+### Geplanned (Toekomstig) 📋
+- [ ] Cleanup scheduling (automation)
+- [ ] Webhook notifications
+- [ ] Detailed audit logging
+- [ ] Multi-tenant support
+- [ ] Export cleanup reports
+- [ ] Selective folder cleanup
+- [ ] File type filtering
+- [ ] Retention policies
 
 ## Licentie
 

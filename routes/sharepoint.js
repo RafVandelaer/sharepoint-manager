@@ -515,7 +515,23 @@ router.post('/sites/:siteId/cleanup', requireAuth, async (req, res) => {
         }
     } catch (error) {
         console.error('Error cleaning up site:', error);
-        res.status(500).json({ error: 'Failed to cleanup site versions' });
+        
+        // Provide more specific error messages
+        let statusCode = 500;
+        let errorMessage = 'Failed to cleanup site versions';
+        
+        if (error.message && error.message.includes('404')) {
+            statusCode = 404;
+            errorMessage = 'Site not found or access denied';
+        } else if (error.message && error.message.includes('401')) {
+            statusCode = 401;
+            errorMessage = 'Unauthorized - token may have expired';
+        } else if (error.message && error.message.includes('429')) {
+            statusCode = 429;
+            errorMessage = 'Too many requests - please retry later';
+        }
+        
+        res.status(statusCode).json({ error: errorMessage, details: error.message });
     }
 });
 

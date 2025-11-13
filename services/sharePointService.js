@@ -373,19 +373,40 @@ class SharePointService {
             // Als we geen cache hebben, voer dan een nieuwe scan uit
             if (!scanData) {
                 console.log('No cache available, performing new scan');
-                const libraries = await this.getDocumentLibraries(siteId);
-                scanData = { 
-                    libraries,
-                    items: {},
-                    itemVersions: {}, // Cache voor versie informatie per item
-                    originalVersionsToKeep: versionsToKeep, // Onthoud voor welk aantal versies we gescand hebben
-                    timestamp: Date.now()
-                };
-                // Cache direct opslaan
-                this.siteScanCache.set(cacheKey, {
-                    data: scanData,
-                    timestamp: Date.now()
-                });
+                try {
+                    const libraries = await this.getDocumentLibraries(siteId);
+                    scanData = { 
+                        libraries,
+                        items: {},
+                        itemVersions: {}, // Cache voor versie informatie per item
+                        originalVersionsToKeep: versionsToKeep, // Onthoud voor welk aantal versies we gescand hebben
+                        timestamp: Date.now()
+                    };
+                    // Cache direct opslaan
+                    this.siteScanCache.set(cacheKey, {
+                        data: scanData,
+                        timestamp: Date.now()
+                    });
+                } catch (libError) {
+                    console.error(`Failed to get document libraries for site ${siteId}:`, libError.message);
+                    // Return empty result instead of throwing - site might be inaccessible but bulk scan should continue
+                    if (libError.message && libError.message.includes('Access')) {
+                        console.warn(`Access denied to site ${siteId} - skipping this site`);
+                        return {
+                            success: false,
+                            dryRun,
+                            totalFiles: 0,
+                            totalVersions: 0,
+                            versionsToRemove: 0,
+                            totalStorageSavings: '0 B',
+                            totalStorageSavingsBytes: 0,
+                            details: {},
+                            error: `Access denied to site: ${libError.message}`,
+                            skipped: true
+                        };
+                    }
+                    throw libError;
+                }
             }
 
             const checkCancelled = () => {
@@ -772,6 +793,13 @@ class SharePointService {
 
         } catch (error) {
             console.error('Error in bulk cleanup:', error);
+            console.error('Error details:', {
+                message: error.message,
+                status: error.status,
+                statusCode: error.statusCode,
+                code: error.code,
+                name: error.name
+            });
             throw error;
         }
     };
