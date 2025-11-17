@@ -17,17 +17,23 @@ const sendSSEEvent = (res, eventName, data) => {
 };
 
 // Middleware to check authentication
-const requireAuth = (req, res, next) => {
+const requireAuth = async (req, res, next) => {
     // Prefer header, but fall back to query param for SSE where custom headers aren't sent reliably
     const sessionId = req.headers['x-session-id'] || req.query.sessionId;
-    const token = authRoutes.getToken(sessionId);
     
-    if (!token) {
-        return res.status(401).json({ error: 'Authentication required' });
+    try {
+        const token = await authRoutes.getToken(sessionId);
+        
+        if (!token) {
+            return res.status(401).json({ error: 'Authentication required' });
+        }
+        
+        req.accessToken = token;
+        next();
+    } catch (error) {
+        console.error('Error in requireAuth middleware:', error);
+        return res.status(401).json({ error: 'Authentication failed' });
     }
-    
-    req.accessToken = token;
-    next();
 };
 
 // Test endpoints (moeten bovenaan staan voor ze door parameter routes worden onderschept)

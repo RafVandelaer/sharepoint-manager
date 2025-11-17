@@ -19,16 +19,22 @@ const sendSSEEvent = (res, eventName, data) => {
 };
 
 // Middleware to check authentication
-const requireAuth = (req, res, next) => {
+const requireAuth = async (req, res, next) => {
     const sessionId = req.headers['x-session-id'] || req.query.sessionId;
-    const token = authRoutes.getToken(sessionId);
     
-    if (!token) {
-        return res.status(401).json({ error: 'Authentication required' });
+    try {
+        const token = await authRoutes.getToken(sessionId);
+        
+        if (!token) {
+            return res.status(401).json({ error: 'Authentication required' });
+        }
+        
+        req.accessToken = token;
+        next();
+    } catch (error) {
+        console.error('Error in requireAuth middleware:', error);
+        return res.status(401).json({ error: 'Authentication failed' });
     }
-    
-    req.accessToken = token;
-    next();
 };
 
 // Geoptimaliseerde files endpoint met streaming

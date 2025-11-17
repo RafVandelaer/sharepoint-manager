@@ -35,6 +35,9 @@ router.get('/callback', async (req, res) => {
             expiresOn: tokenResponse.expiresOn
         });
 
+        const expiresIn = Math.round((new Date(tokenResponse.expiresOn) - new Date()) / 1000 / 60);
+        console.log(`✅ New session created: ${sessionId} (expires in ${expiresIn} minutes)`);
+
         // Redirect to main app with session
         res.redirect(`/?session=${sessionId}&auth=success`);
     } catch (error) {
@@ -43,7 +46,7 @@ router.get('/callback', async (req, res) => {
     }
 });
 
-router.get('/token/:sessionId', (req, res) => {
+router.get('/token/:sessionId', async (req, res) => {
     const { sessionId } = req.params;
     const tokenData = tokenCache.get(sessionId);
     
@@ -51,15 +54,45 @@ router.get('/token/:sessionId', (req, res) => {
         return res.status(401).json({ error: 'Session not found or expired' });
     }
     
-    // Check if token is expired
-    if (new Date() > new Date(tokenData.expiresOn)) {
+    // Check if token is expired or will expire soon
+    const expiresOn = new Date(tokenData.expiresOn);
+    const now = new Date();
+    const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
+    
+    if (expiresOn < now) {
         tokenCache.delete(sessionId);
         return res.status(401).json({ error: 'Token expired' });
     }
     
+    // Auto-refresh if expiring soon
+    if (expiresOn < fiveMinutesFromNow) {
+        console.log('Token expiring soon, refreshing...');
+        try {
+            const newTokenResponse = await authService.getTokenSilent(tokenData.account);
+            
+            tokenCache.set(sessionId, {
+                accessToken: newTokenResponse.accessToken,
+                account: newTokenResponse.account,
+                expiresOn: newTokenResponse.expiresOn
+            });
+            
+            console.log('Token refreshed successfully via /token endpoint');
+            return res.json({ 
+                hasValidToken: true,
+                expiresOn: newTokenResponse.expiresOn,
+                refreshed: true
+            });
+        } catch (error) {
+            console.error('Failed to refresh token:', error.message);
+            tokenCache.delete(sessionId);
+            return res.status(401).json({ error: 'Token refresh failed' });
+        }
+    }
+    
     res.json({ 
         hasValidToken: true,
-        expiresOn: tokenData.expiresOn 
+        expiresOn: tokenData.expiresOn,
+        refreshed: false
     });
 });
 
@@ -70,9 +103,37 @@ router.post('/logout/:sessionId', (req, res) => {
 });
 
 // Middleware to get token for API routes
-router.getToken = (sessionId) => {
+router.getToken = async (sessionId) => {
     const tokenData = tokenCache.get(sessionId);
-    return tokenData ? tokenData.accessToken : null;
+    if (!tokenData) return null;
+    
+    // Check if token will expire in the next 5 minutes
+    const expiresOn = new Date(tokenData.expiresOn);
+    const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000);
+    
+    if (expiresOn < fiveMinutesFromNow) {
+        console.log('Token expiring soon, attempting silent refresh...');
+        try {
+            const newTokenResponse = await authService.getTokenSilent(tokenData.account);
+            
+            // Update token in cache
+            tokenCache.set(sessionId, {
+                accessToken: newTokenResponse.accessToken,
+                account: newTokenResponse.account,
+                expiresOn: newTokenResponse.expiresOn
+            });
+            
+            console.log('Token refreshed successfully');
+            return newTokenResponse.accessToken;
+        } catch (error) {
+            console.error('Failed to refresh token silently:', error.message);
+            // Token refresh failed, remove from cache
+            tokenCache.delete(sessionId);
+            return null;
+        }
+    }
+    
+    return tokenData.accessToken;
 };
 
 module.exports = router;
