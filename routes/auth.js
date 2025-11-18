@@ -7,6 +7,7 @@ const authService = new AuthService();
 // Store tokens in memory (in production, use proper session management)
 const tokenCache = new Map();
 
+// User login (delegated permissions)
 router.get('/login', async (req, res) => {
     try {
         const authUrl = await authService.getAuthUrl();
@@ -14,6 +15,34 @@ router.get('/login', async (req, res) => {
     } catch (error) {
         console.error('Error getting auth URL:', error);
         res.status(500).json({ error: 'Failed to get authentication URL' });
+    }
+});
+
+// App-only login (application permissions)
+router.post('/login/app', async (req, res) => {
+    try {
+        const tokenResponse = await authService.getAppOnlyToken();
+        
+        // Store token with session ID
+        const sessionId = Math.random().toString(36).substring(7);
+        tokenCache.set(sessionId, {
+            accessToken: tokenResponse.accessToken,
+            account: null,
+            expiresOn: tokenResponse.expiresOn,
+            authType: 'app'
+        });
+
+        const expiresIn = Math.round((new Date(tokenResponse.expiresOn) - new Date()) / 1000 / 60);
+        console.log(`✅ App session created: ${sessionId} (expires in ${expiresIn} minutes)`);
+
+        res.json({ 
+            sessionId,
+            authType: 'app',
+            expiresOn: tokenResponse.expiresOn
+        });
+    } catch (error) {
+        console.error('Error in app login:', error);
+        res.status(500).json({ error: 'Failed to authenticate as app' });
     }
 });
 
@@ -32,7 +61,8 @@ router.get('/callback', async (req, res) => {
         tokenCache.set(sessionId, {
             accessToken: tokenResponse.accessToken,
             account: tokenResponse.account,
-            expiresOn: tokenResponse.expiresOn
+            expiresOn: tokenResponse.expiresOn,
+            authType: 'user'
         });
 
         const expiresIn = Math.round((new Date(tokenResponse.expiresOn) - new Date()) / 1000 / 60);
@@ -80,7 +110,8 @@ router.get('/token/:sessionId', async (req, res) => {
             return res.json({ 
                 hasValidToken: true,
                 expiresOn: newTokenResponse.expiresOn,
-                refreshed: true
+                refreshed: true,
+                authType: tokenData.authType || 'user'
             });
         } catch (error) {
             console.error('Failed to refresh token:', error.message);
@@ -92,7 +123,8 @@ router.get('/token/:sessionId', async (req, res) => {
     res.json({ 
         hasValidToken: true,
         expiresOn: tokenData.expiresOn,
-        refreshed: false
+        refreshed: false,
+        authType: tokenData.authType || 'user'
     });
 });
 

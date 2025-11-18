@@ -36,11 +36,46 @@ class SharePointManager {
 
     init() {
         this.setupEventListeners();
+        this.setupLoginModal();
         this.checkAuthStatus();
         setupHistoryHandlers(this);
         
         // Check for incomplete tasks on startup - wait longer for auth to complete
         setTimeout(() => this.checkForIncompleteTasks(), 2500);
+    }
+
+    setupLoginModal() {
+        const loginModal = document.getElementById('loginModal');
+        const closeBtn = document.getElementById('closeLoginModal');
+        const userLoginBtn = document.getElementById('userLoginBtn');
+        const appLoginBtn = document.getElementById('appLoginBtn');
+
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                loginModal.style.display = 'none';
+            });
+        }
+
+        if (userLoginBtn) {
+            userLoginBtn.addEventListener('click', () => {
+                loginModal.style.display = 'none';
+                this.loginAsUser();
+            });
+        }
+
+        if (appLoginBtn) {
+            appLoginBtn.addEventListener('click', () => {
+                loginModal.style.display = 'none';
+                this.loginAsApp();
+            });
+        }
+
+        // Close on outside click
+        loginModal?.addEventListener('click', (e) => {
+            if (e.target === loginModal) {
+                loginModal.style.display = 'none';
+            }
+        });
     }
 
     setupEventListeners() {
@@ -468,18 +503,18 @@ class SharePointManager {
         const urlParams = new URLSearchParams(window.location.search);
         const session = urlParams.get('session');
         const authStatus = urlParams.get('auth');
+        const authType = urlParams.get('authType') || 'user';
 
         if (authStatus === 'error') {
             this.showError('Authenticatie mislukt. Probeer opnieuw.');
-            // Clean URL
             window.history.replaceState({}, document.title, window.location.pathname);
         } else if (session && authStatus === 'success') {
             this.sessionId = session;
             state.sessionId = session;
-            this.showSuccess('Succesvol ingelogd!');
-            this.showAuthenticatedState();
+            this.authType = authType;
+            this.showSuccess(`Succesvol ingelogd als ${authType === 'app' ? 'app' : 'gebruiker'}!`);
+            this.showAuthenticatedState(authType);
             this.loadSites();
-            // Clean URL
             window.history.replaceState({}, document.title, window.location.pathname);
         } else if (session) {
             this.sessionId = session;
@@ -497,7 +532,6 @@ class SharePointManager {
         }
 
         try {
-            // Probeer eerst het nieuwe endpoint met /api/ prefix
             let response;
             
             try {
@@ -510,15 +544,15 @@ class SharePointManager {
             }
             
             if (response.ok) {
-                this.showAuthenticatedState();
+                const data = await response.json();
+                this.authType = data.authType || 'user';
+                this.showAuthenticatedState(this.authType);
                 this.loadSites();
             } else {
                 console.log('Session validation failed:', response.status, response.statusText);
                 this.showUnauthenticatedState();
                 this.sessionId = null;
                 state.sessionId = null;
-                
-                // Toon demo banner omdat we geen geldige sessie hebben
                 this.showDemoBanner();
             }
         } catch (error) {
@@ -530,13 +564,20 @@ class SharePointManager {
     }
 
     async login() {
+        // Show login modal instead of direct login
+        const loginModal = document.getElementById('loginModal');
+        if (loginModal) {
+            loginModal.style.display = 'flex';
+        }
+    }
+
+    async loginAsUser() {
         const loginBtn = document.getElementById('loginBtn');
         const originalText = loginBtn.innerHTML;
         
         try {
-            console.log('Starting login process...');
+            console.log('Starting user login process...');
             
-            // Disable login button and show loading state
             loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Laden...';
             loginBtn.disabled = true;
             
@@ -564,7 +605,49 @@ class SharePointManager {
             console.error('Login error:', error);
             this.showError('Fout bij inloggen. Controleer je Azure App registratie configuratie.');
         } finally {
-            // Restore login button state
+            if (loginBtn) {
+                loginBtn.innerHTML = originalText;
+                loginBtn.disabled = false;
+            }
+        }
+    }
+
+    async loginAsApp() {
+        const loginBtn = document.getElementById('loginBtn');
+        const originalText = loginBtn.innerHTML;
+        
+        try {
+            console.log('Starting app login process...');
+            
+            loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> App Login...';
+            loginBtn.disabled = true;
+            
+            const response = await fetch('/api/auth/login/app', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            console.log('App login response:', data);
+            
+            if (data.sessionId) {
+                this.sessionId = data.sessionId;
+                state.sessionId = data.sessionId;
+                this.authType = 'app';
+                this.showSuccess('Succesvol ingelogd als app!');
+                this.showAuthenticatedState('app');
+                this.loadSites();
+            } else {
+                throw new Error('No session ID received');
+            }
+        } catch (error) {
+            console.error('App login error:', error);
+            this.showError('Fout bij app login. Controleer je client secret en permissions.');
+        } finally {
             if (loginBtn) {
                 loginBtn.innerHTML = originalText;
                 loginBtn.disabled = false;
@@ -587,9 +670,17 @@ class SharePointManager {
         this.showSuccess('Uitgelogd');
     }
 
-    showAuthenticatedState() {
+    showAuthenticatedState(authType = 'user') {
         document.getElementById('loginBtn').style.display = 'none';
-        document.getElementById('userInfo').style.display = 'flex';
+        const userInfo = document.getElementById('userInfo');
+        userInfo.style.display = 'flex';
+        
+        // Update user name with auth mode badge
+        const userName = document.getElementById('userName');
+        const badgeClass = authType === 'app' ? 'app' : 'user';
+        const badgeText = authType === 'app' ? 'App' : 'User';
+        userName.innerHTML = `Ingelogd <span class="auth-mode-badge ${badgeClass}">${badgeText}</span>`;
+        
         document.getElementById('setupSection').style.display = 'none';
         document.getElementById('sitesSection').style.display = 'block';
     }
@@ -1344,7 +1435,7 @@ class SharePointManager {
         cleanupBtn.disabled = true;
 
         try {
-            const response = await fetch(`/api/sites/${this.currentSite.id}/cleanup`, {
+            const response = await fetch(`/api/sharepoint/sites/${this.currentSite.id}/cleanup`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1396,6 +1487,141 @@ class SharePointManager {
 
         resultsDiv.innerHTML = html;
         resultsDiv.style.display = 'block';
+    }
+
+    // Run real cleanup for selected sites (bulk)
+    async bulkCleanup() {
+        const selectedSites = this.getSelectedSites();
+        if (selectedSites.length === 0) {
+            this.showError('Selecteer eerst sites om op te schonen');
+            return;
+        }
+        if (!this.sessionId) {
+            this.showError('Inloggen vereist voor echte opschoning');
+            this.showDemoBanner();
+            return;
+        }
+
+        const versionsInput = document.getElementById('bulkVersionsToKeep');
+        const versionsToKeep = versionsInput ? (parseInt(versionsInput.value) || 3) : 3;
+
+        const confirmMsg = `Je staat op het punt om echte opschoning uit te voeren voor ${selectedSites.length} site(s).\n\nDit verwijdert oude versies en kan niet ongedaan worden gemaakt.\nDe huidige (nieuwste) versie blijft altijd behouden.\n\nDoorgaan?`;
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+
+        await this.runBulkCleanupForSites(selectedSites, versionsToKeep, 'Bulk Opschoning');
+    }
+
+    // Start real cleanup for the sites from the last bulk dry run
+    async startBulkCleanupFromDryRun() {
+        const sites = this.lastBulkDryRunSites || [];
+        const versionsToKeep = this.lastBulkVersionsToKeep || 3;
+        if (!sites.length) {
+            this.showError('Geen vorige dry run resultaten gevonden');
+            return;
+        }
+        if (!this.sessionId) {
+            this.showError('Inloggen vereist voor echte opschoning');
+            this.showDemoBanner();
+            return;
+        }
+
+        const confirmMsg = `Echte opschoning starten voor ${sites.length} site(s) op basis van de laatste dry run?`;
+        if (!confirm(confirmMsg)) return;
+
+        await this.runBulkCleanupForSites(sites, versionsToKeep, 'Bulk Opschoning (van Dry Run)');
+    }
+
+    // Internal helper to perform bulk real cleanup with UI feedback
+    async runBulkCleanupForSites(siteIds, versionsToKeep, title) {
+        // Setup abort controller
+        this.bulkScanAbortController = new AbortController();
+        this.bulkScanCancelled = false;
+
+        const overlay = document.getElementById('bulkProgressOverlay');
+        const progressBar = document.getElementById('bulkProgressBar');
+        const progressText = document.getElementById('bulkProgressText');
+        const statusMessage = document.getElementById('bulkStatusMessage');
+        const folderPath = document.getElementById('bulkCurrentFolder');
+        const resultsDiv = document.getElementById('bulkResults');
+        const closeBtn = document.getElementById('closeBulkProgress');
+
+        if (!overlay) {
+            // No overlay present, run simple sequential cleanup
+            let success = 0; let failed = 0;
+            for (const siteId of siteIds) {
+                try {
+                    await api.cleanupReal(siteId, versionsToKeep, this.bulkScanAbortController.signal);
+                    success++;
+                    await new Promise(r => setTimeout(r, 500));
+                } catch (e) {
+                    if (e.name === 'AbortError') break;
+                    failed++;
+                }
+            }
+            this.showSuccess(`Opschoning voltooid: ${success} succesvol, ${failed} gefaald`);
+            return;
+        }
+
+        document.getElementById('bulkProgressTitle').textContent = `${title} — ${versionsToKeep} versies behouden`;
+        overlay.style.display = 'flex';
+        resultsDiv.style.display = 'none';
+        closeBtn.style.display = 'none';
+
+        let success = 0;
+        let failed = 0;
+        let totalFiles = 0;
+        let versionsRemoved = 0;
+        let storageSavingsBytes = 0;
+
+        for (let i = 0; i < siteIds.length; i++) {
+            if (this.bulkScanCancelled) break;
+            const siteId = siteIds[i];
+            const site = this.sites.find(s => s.id === siteId);
+            const siteName = site ? (site.displayName || site.name) : siteId;
+
+            statusMessage.innerHTML = `<i class="fas fa-broom"></i> Opschonen ${siteName} (${i + 1}/${siteIds.length})...`;
+            folderPath.textContent = 'Verbinding maken...';
+
+            try {
+                const result = await api.cleanupReal(siteId, versionsToKeep, this.bulkScanAbortController.signal);
+                success++;
+                totalFiles += result.totalFiles || 0;
+                versionsRemoved += result.versionsToRemove || 0;
+                storageSavingsBytes += result.totalStorageSavingsBytes || 0;
+                progressBar.style.width = `${Math.round(((i + 1) / siteIds.length) * 100)}%`;
+                progressText.textContent = `${i + 1}/${siteIds.length} sites`;
+                folderPath.textContent = `✓ ${siteName} opgeschoond`;
+                await new Promise(r => setTimeout(r, 500));
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    statusMessage.innerHTML = '<i class="fas fa-pause-circle"></i> Opschoning gepauzeerd';
+                    break;
+                }
+                console.error(`Cleanup error for site ${siteId}:`, error);
+                failed++;
+                folderPath.textContent = `✗ ${siteName}: ${error.message}`;
+                // small delay before next
+                await new Promise(r => setTimeout(r, 300));
+            }
+        }
+
+        // Finalize
+        progressBar.style.width = '100%';
+        progressText.textContent = '100%';
+        const totalAttempted = success + failed;
+        if (failed > 0) {
+            statusMessage.innerHTML = `<i class="fas fa-check-circle" style="color: #ff9800;"></i> Voltooid met ${failed} fouten (${success}/${totalAttempted} sites)`;
+        } else {
+            statusMessage.innerHTML = `<i class="fas fa-check-circle" style="color: #4caf50;"></i> Alle ${success} sites succesvol opgeschoond!`;
+        }
+        document.getElementById('bulkSitesProcessed').textContent = success;
+        document.getElementById('bulkTotalFiles').textContent = totalFiles;
+        document.getElementById('bulkVersionsToRemove').textContent = versionsRemoved;
+        document.getElementById('bulkStorageSavings').textContent = this.formatFileSize(storageSavingsBytes);
+        resultsDiv.style.display = 'block';
+        closeBtn.style.display = 'block';
     }
 
     getSelectedSites() {

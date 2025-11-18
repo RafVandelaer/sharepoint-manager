@@ -63,6 +63,26 @@ class AuthService {
             throw error;
         }
     }
+
+    // App-only authentication (client credentials flow)
+    async getAppOnlyToken() {
+        const tokenRequest = {
+            scopes: ['https://graph.microsoft.com/.default'] // App permissions
+        };
+
+        try {
+            const response = await this.cca.acquireTokenByClientCredential(tokenRequest);
+            return {
+                accessToken: response.accessToken,
+                expiresOn: new Date(Date.now() + (response.expiresIn || 3600) * 1000),
+                account: null, // No user account for app-only
+                authType: 'app'
+            };
+        } catch (error) {
+            console.error('Error acquiring app-only token:', error);
+            throw error;
+        }
+    }
 }
 
 module.exports = AuthService;

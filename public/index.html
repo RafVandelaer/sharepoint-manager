@@ -456,6 +456,50 @@ GRAPH_API_URL=https://graph.microsoft.com/v1.0</code></pre>
         </main>
     </div>
 
+    <!-- Login Mode Selection Modal -->
+    <div id="loginModal" class="modal" style="display: none;">
+        <div class="modal-content login-modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-sign-in-alt"></i> Selecteer Login Methode</h2>
+                <button class="modal-close" id="closeLoginModal">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="login-options">
+                    <div class="login-option" id="userLoginOption">
+                        <div class="login-option-icon">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <h3>Gebruiker Login</h3>
+                        <p>Log in met je Microsoft account. Toegang tot sites waar je rechten hebt.</p>
+                        <ul class="login-features">
+                            <li><i class="fas fa-check"></i> Persoonlijke toegang</li>
+                            <li><i class="fas fa-check"></i> Audit trail met jouw naam</li>
+                            <li><i class="fas fa-check"></i> Respecteert jouw permissions</li>
+                        </ul>
+                        <button class="btn btn-primary" id="userLoginBtn">
+                            <i class="fas fa-user"></i> Login als Gebruiker
+                        </button>
+                    </div>
+                    <div class="login-option" id="appLoginOption">
+                        <div class="login-option-icon admin">
+                            <i class="fas fa-cog"></i>
+                        </div>
+                        <h3>App Login (Admin)</h3>
+                        <p>Login met app credentials. Toegang tot alle tenant sites.</p>
+                        <ul class="login-features">
+                            <li><i class="fas fa-check"></i> Tenant-wide toegang</li>
+                            <li><i class="fas fa-check"></i> Geen user interactie</li>
+                            <li><i class="fas fa-exclamation-triangle"></i> Vereist admin consent</li>
+                        </ul>
+                        <button class="btn btn-secondary" id="appLoginBtn">
+                            <i class="fas fa-cog"></i> Login als App
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
             <script src="js/index.js" type="module"></script>
     <script src="js/ui.js" type="module"></script>
     <script src="js/api.js" type="module"></script>
