@@ -7,7 +7,7 @@ export function createNavBar(currentPage = 'home') {
         <header class="app-header">
             <div class="app-header-content">
                 <a href="/beta/index.html" class="app-logo">
-                    <i class="fab fa-microsoft"></i>
+                    <img src="/favicon.svg" alt="Sharepointer" class="app-logo-icon" width="32" height="32">
                     <div class="app-title">
                         Sharepointer
                         <span class="beta-badge">Beta</span>
@@ -66,6 +66,15 @@ export const navBarStyles = `
         gap: var(--space-3);
         text-decoration: none;
         color: var(--color-text);
+        transition: transform 0.2s ease;
+    }
+
+    .app-logo:hover {
+        transform: translateY(-2px);
+    }
+
+    .app-logo-icon {
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
     }
 
     .app-logo i {

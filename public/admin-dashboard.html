@@ -146,6 +146,15 @@
             gap: 12px;
             text-decoration: none;
             color: var(--text-primary);
+            transition: transform 0.2s ease;
+        }
+
+        .app-logo:hover {
+            transform: translateY(-2px);
+        }
+
+        .app-logo-icon {
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
         }
 
         .app-logo i {
@@ -539,9 +548,9 @@
             <!-- Header -->
             <div class="app-header">
                 <div class="app-logo">
-                    <i class="fas fa-shield-alt"></i>
+                    <img src="/favicon.svg" alt="Sharepointer" class="app-logo-icon" width="32" height="32">
                     <div class="app-title">
-                        SharePoint Manager
+                        Sharepointer
                         <span class="admin-badge">Admin</span>
                     </div>
                 </div>

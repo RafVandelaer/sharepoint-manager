@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="nl">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -218,22 +218,13 @@
     <div class="container">
         <div class="error-icon">🗂️</div>
         <div class="error-code">404</div>
-        <h1>Whoops! Deze SharePoint site bestaat niet</h1>
+        <h1>Whoops! This SharePoint site doesn't exist</h1>
         <p>
-            De pagina die je zoekt is verdwenen in de cloud... of misschien is het 
-            gewoon een type in de URL? Zelfs de beste versioning kan dit niet terughalen! 📂
+            The page you're looking for vanished into the cloud... or maybe it's 
+            just a typo in the URL? Even the best versioning can't recover this! 📂
         </p>
         
-        <a href="/" class="btn-home">🏠 Terug naar Home</a>
-
-        <div class="suggestions">
-            <h2>Misschien zoek je dit:</h2>
-            <ul>
-                <li><a href="/">📊 Analytics Dashboard</a></li>
-                <li><a href="/beta/">🧪 Beta Interface</a></li>
-                <li><a href="/admin-dashboard.html">🔐 Admin Dashboard</a></li>
-            </ul>
-        </div>
+        <a href="/" class="btn-home">🏠 Home</a>
     </div>
 
     <script>
@@ -262,8 +253,8 @@
             
             if (konamiCode.join(',') === konamiSequence.join(',')) {
                 document.querySelector('.error-icon').textContent = '🎉';
-                document.querySelector('h1').textContent = 'Gefeliciteerd! Je vond de easter egg!';
-                document.querySelector('p').textContent = 'Je bent een echte Sharepointer pro! 🚀';
+                document.querySelector('h1').textContent = 'Congratulations! You found the easter egg!';
+                document.querySelector('p').textContent = 'You\'re a true Sharepointer pro! 🚀';
                 document.body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)';
             }
         });
