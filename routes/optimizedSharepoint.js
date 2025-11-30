@@ -20,17 +20,32 @@ const sendSSEEvent = (res, eventName, data) => {
 
 // Middleware to check authentication
 const requireAuth = async (req, res, next) => {
-    const sessionId = req.headers['x-session-id'] || req.query.sessionId;
-    
     try {
-        const token = await authRoutes.getToken(sessionId);
-        
-        if (!token) {
-            return res.status(401).json({ error: 'Authentication required' });
+        // 1) Prefer Bearer token in Authorization header
+        const authHeader = req.headers['authorization'] || '';
+        if (authHeader.toLowerCase().startsWith('bearer ')) {
+            req.accessToken = authHeader.slice(7).trim();
+            if (!req.accessToken) return res.status(401).json({ error: 'Invalid Bearer token' });
+            return next();
         }
-        
-        req.accessToken = token;
-        next();
+
+        // 2) For SSE or limited clients, allow access_token in query string
+        if (req.query && req.query.access_token) {
+            req.accessToken = req.query.access_token;
+            return next();
+        }
+
+        // 3) Backward-compat: X-Session-ID header or sessionId query param
+        const sessionId = req.headers['x-session-id'] || req.query.sessionId;
+        if (sessionId) {
+            const token = await authRoutes.getToken(sessionId);
+            if (token) {
+                req.accessToken = token;
+                return next();
+            }
+        }
+
+        return res.status(401).json({ error: 'Authentication required' });
     } catch (error) {
         console.error('Error in requireAuth middleware:', error);
         return res.status(401).json({ error: 'Authentication failed' });

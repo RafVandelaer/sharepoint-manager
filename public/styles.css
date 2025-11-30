@@ -1884,3 +1884,126 @@ input[type="number"]::-webkit-outer-spin-button {
     background: #f3e5f5;
     color: #7b1fa2;
 }
+
+/* Config Modal Styles */
+.config-setup {
+    padding: 1rem 0;
+}
+
+.config-intro {
+    background: #e3f2fd;
+    border-left: 4px solid #2196f3;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    border-radius: 4px;
+    color: #1565c0;
+}
+
+.config-intro i {
+    margin-right: 0.5rem;
+}
+
+.config-form {
+    margin-bottom: 1.5rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #333;
+}
+
+.form-group label i {
+    margin-right: 0.5rem;
+    color: #2196f3;
+}
+
+.form-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 1rem;
+    transition: border-color 0.2s ease;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #2196f3;
+}
+
+.form-group small {
+    display: block;
+    margin-top: 0.25rem;
+    color: #757575;
+    font-size: 0.85rem;
+}
+
+.config-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.config-actions .btn {
+    flex: 1;
+}
+
+.setup-instructions {
+    background: #f5f5f5;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.setup-instructions h4 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: #333;
+}
+
+.setup-instructions h4 i {
+    margin-right: 0.5rem;
+    color: #2196f3;
+}
+
+.setup-steps {
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.setup-steps li {
+    margin-bottom: 1rem;
+    line-height: 1.6;
+}
+
+.setup-steps li ul {
+    margin-top: 0.5rem;
+}
+
+.setup-steps code {
+    background: #fff;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    color: #d32f2f;
+}
+
+.setup-steps a {
+    color: #2196f3;
+    text-decoration: none;
+}
+
+.setup-steps a:hover {
+    text-decoration: underline;
+}
+
+.hidden {
+    display: none !important;
+}

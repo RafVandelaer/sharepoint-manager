@@ -4,12 +4,13 @@ Een moderne web applicatie voor het beheren van SharePoint sites en het opschone
 
 ## Functionaliteiten
 
-- 🔐 **Azure AD Authenticatie** - Veilige login via Microsoft
-- 🌐 **Site Discovery** - Automatisch scannen van alle SharePoint sites in je tenant
-- 🎯 **Site Selectie** - Eenvoudige interface voor site selectie
-- 🧹 **Versie Opschoning** - Bulk verwijdering van oude bestandsversies
-- 💻 **Moderne UI** - Responsieve en gebruiksvriendelijke interface
-- ⚡ **Lokaal Development** - Geen complexe deployment vereist
+- **Azure AD Authenticatie** - Veilige login via Microsoft
+- **Site Discovery** - Automatisch scannen van alle SharePoint sites in je tenant
+- **Site Selectie** - Eenvoudige interface voor site selectie
+- **Versie Opschoning** - Bulk verwijdering van oude bestandsversies
+- **Moderne UI** - Responsieve en gebruiksvriendelijke interface
+- **Lokaal Development** - Geen complexe deployment vereist
+- **Ephemeral Admin Tokens** - Tijdelijke in-memory admin toegang naast legacy `ADMIN_API_KEY`
 
 ## Vereisten
 
@@ -30,12 +31,12 @@ Een moderne web applicatie voor het beheren van SharePoint sites en het opschone
    npm install
    ```
 
-3. **Configureer omgevingsvariabelen**
-   
-   Kopieer `.env.example` naar `.env` en vul de waarden in:
+3. **(Optioneel) Legacy omgevingsvariabelen**  
+   De huidige architectuur laat gebruikers hun Azure App Registration credentials in de browser invoeren (multitenant per sessie). Een `.env` bestand is alleen nodig voor de (nog aanwezige) statische admin key of backward compatibility. Kopiëren:
    ```bash
    cp .env.example .env
    ```
+   Voor productie is het aanbevolen de statische admin key te vervangen door een ephemeral token (zie sectie "Ephemeral Admin Tokens").
 
 ## Snelstart (5 minuten)
 
@@ -65,6 +66,121 @@ Dit geeft mock data voor demoing.
 
 ## Configuratie
 
+### Multi-User Deployment
+Huidige modus: gebruikers leveren zelf hun Azure App Registration gegevens via de web UI (tenantId, clientId, clientSecret). Geen server-side opslag op disk; alles per sessie in-memory. Dit vervangt het eerdere model waarbij één centrale App Registration en env vars nodig waren.
+
+**Sessiemodel:**
+- User vult config in → `configService` bewaart per `sessionId` in memory.
+- OAuth login gebruikt dynamische config (MSAL) → delegated token per gebruiker.
+- Bij server restart gaan sessies verloren (design keuze voor stateless veiligheid).
+
+**Backward compatibility:** Het eerdere `.env` model en `verifyAppRegistration.js` zijn gearchiveerd (zie `archive/`); functionaliteit blijft voorlopig bruikbaar maar wordt uitgefaseerd.
+
+### Geautomatiseerde Provisioning (optioneel)
+Tenant admin kan provisioning script draaien:
+
+```bash
+./scripts/provision-app.sh
+```
+
+Dit script:
+- Maakt (of update) een App Registratie met naam `SharePointManager`
+- Voegt redirect URI `http://localhost:3000/auth/callback` toe
+- Voegt Microsoft Graph application permissions toe: `Sites.Read.All`, `Sites.ReadWrite.All`, `Sites.Manage.All`, `User.Read`
+- Creëert een client secret en toont de waarde éénmalig
+- Print een blok in `.env` formaat voor direct gebruik
+
+Daarna: geef admin consent in Azure Portal (of via `az ad app permission admin-consent --id <clientId>`).
+
+### Runtime Validatie
+In de huidige browser-configuratie valideert de server geen Azure env vars meer. Validatie gebeurt op het moment dat een gebruiker zijn config post (GUID format, presence). Eventuele legacy env variabelen worden genegeerd voor OAuth flows tenzij expliciet geactiveerd.
+
+### Production Deployment Opties
+
+#### 1️⃣ Azure App Service (aanbevolen)
+Set environment variables in **Configuration > Application settings**:
+```
+TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+CLIENT_ID=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy
+CLIENT_SECRET=Z123~secretValue
+REDIRECT_URI=https://yourdomain.com/auth/callback
+GRAPH_API_URL=https://graph.microsoft.com/v1.0
+```
+
+Enable **Always On** en set **Node version** naar 18+ in General settings.
+
+#### 2️⃣ Docker Container
+Build met secret injection via environment:
+```dockerfile
+FROM node:18-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --production
+COPY . .
+EXPOSE 3000
+CMD ["node", "server.js"]
+```
+
+Run met env file of inline:
+```bash
+docker run -p 3000:3000 \
+  -e TENANT_ID=$TENANT_ID \
+  -e CLIENT_ID=$CLIENT_ID \
+  -e CLIENT_SECRET=$CLIENT_SECRET \
+  -e REDIRECT_URI=https://yourdomain.com/auth/callback \
+  sharepoint-manager
+```
+
+#### 3️⃣ Azure Key Vault Integration (enterprise)
+Install `@azure/keyvault-secrets` + `@azure/identity` en wijzig `server.js` om secrets te laden:
+```javascript
+const { DefaultAzureCredential } = require('@azure/identity');
+const { SecretClient } = require('@azure/keyvault-secrets');
+
+const credential = new DefaultAzureCredential();
+const client = new SecretClient(`https://<vault-name>.vault.azure.net`, credential);
+
+async function loadConfig() {
+  const [clientId, clientSecret, tenantId] = await Promise.all([
+    client.getSecret('CLIENT-ID'),
+    client.getSecret('CLIENT-SECRET'),
+    client.getSecret('TENANT-ID')
+  ]);
+  process.env.CLIENT_ID = clientId.value;
+  process.env.CLIENT_SECRET = clientSecret.value;
+  process.env.TENANT_ID = tenantId.value;
+}
+```
+
+Enable **Managed Identity** in Azure App Service en geef RBAC role "Key Vault Secrets User" aan de identity.
+
+#### 4️⃣ Kubernetes (advanced)
+Use **Secrets** for credentials:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sharepoint-secrets
+type: Opaque
+stringData:
+  TENANT_ID: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  CLIENT_ID: "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy"
+  CLIENT_SECRET: "Z123~secretValue"
+---
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+      - name: sharepoint-manager
+        envFrom:
+        - secretRef:
+            name: sharepoint-secrets
+```
+
+### Handmatige Setup (klassiek / legacy)
+
 ### Stap 1: Nieuwe App Registratie
 1. Ga naar [Azure Portal - App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
 2. Klik op "New registration"
@@ -78,7 +194,7 @@ Voeg de volgende Microsoft Graph permissions toe:
 - `Sites.ReadWrite.All` (Application)  
 - `Sites.Manage.All` (Application)
 
-**⚠️ Belangrijk: Vergeet niet om admin consent te geven!**
+**Belangrijk: Vergeet niet om admin consent te geven!**
 
 ### Stap 3: Client Secret
 1. Ga naar "Certificates & secrets"
@@ -86,15 +202,55 @@ Voeg de volgende Microsoft Graph permissions toe:
 3. Kopieer de waarde (deze is maar één keer zichtbaar)
 
 ### Stap 4: Configuratie
-Vul je `.env` bestand in met de verkregen waarden:
+Vul `.env` bestand in met de waarden uit Azure Portal (of provisioning script output):
 ```env
-TENANT_ID=jouw-tenant-id-hier
-CLIENT_ID=jouw-client-id-hier
-CLIENT_SECRET=jouw-client-secret-hier
-PORT=3000
+TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+CLIENT_ID=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy
+CLIENT_SECRET=Z123~superSecretValueCopiedFromPortal
 REDIRECT_URI=http://localhost:3000/auth/callback
 GRAPH_API_URL=https://graph.microsoft.com/v1.0
+PORT=3000
 ```
+
+Admin consent niet vergeten anders falen Graph/SharePoint calls met 401 of missing consent errors.
+
+> Let op: Het verificatie script (`verifyAppRegistration.js`) is gearchiveerd; de voorkeursflow is nu user-supplied credentials in de UI.
+
+### Ephemeral Admin Tokens
+Naast de legacy `ADMIN_API_KEY` (uit `.env`) ondersteunt de server nu **ephemeral** in-memory admin tokens:
+
+Endpoints:
+```
+POST /api/admin/ephemeral  (headers: X-Admin-Key: <legacy> of X-Admin-Ephemeral: <huidig>)
+Body: { rotate?: true, ttlMs?: number }
+Response: { token, expiresAt, method }
+
+GET  /api/admin/ephemeral  (auth headers zoals boven)
+Response: { status: { hasToken, expiresAt, ttlMs, rotations[] }, method }
+```
+
+Gebruik (voorbeeld):
+```bash
+# Eerste rotatie met legacy key
+curl -X POST http://localhost:3000/api/admin/ephemeral \
+   -H "X-Admin-Key: $ADMIN_API_KEY" \
+   -H 'Content-Type: application/json' \
+   -d '{"rotate": true, "ttlMs": 14400000}'
+
+# Status ophalen met ephemeral token
+curl http://localhost:3000/api/admin/ephemeral \
+   -H "X-Admin-Ephemeral: <nieuw-token>"
+```
+
+Aanbevelingen:
+- Vervang gebruik van statische key door ephemeral token voor lagere impact bij compromittering.
+- TTL standaard 8 uur; verkort voor striktere security (min 5 minuten).
+- Niet loggen van volledige token; indien logging gewenst alleen hash.
+
+Migratieplan:
+1. Genereer eerste ephemeral token met legacy key.
+2. Update admin tooling (Postman/scripts) naar `X-Admin-Ephemeral` header.
+3. Verwijder later `ADMIN_API_KEY` uit `.env` en runtime als niet meer nodig.
 
 ## Gebruik
 
@@ -193,7 +349,7 @@ sharepoint-manager/
 - Client secrets moeten veilig worden opgeslagen
 - Regelmatige token vernieuwing
 
-### ✅ Versie Veiligheid
+### Versie Veiligheid
 
 **Belangrijke garantie: De huidige versie van een bestand wordt NOOIT verwijderd!**
 
@@ -274,7 +430,7 @@ Bij problamen met bulk dry run:
 1. Open DevTools Console
 2. Let op "Attempt X/3" berichten - dit toont retries
 3. Berichten met "⊘ Skipped" geven aan welke sites geen access hadden
-4. "✅ Site X completed" toont succesvolle sites
+4. "Site X completed" toont succesvolle sites
 
 ### Performance Tips
 
@@ -448,23 +604,23 @@ Bij vragen of problemen:
 ## Best Practices
 
 ### Veiligheid
-- ✅ Altijd `npm start` of `npm run dev` gebruiken (niet rechtstreeks node server.js)
-- ✅ `.env` bestand in `.gitignore` toevoegen (geheim!)
-- ✅ Regelmatig admin consent vernieuwing checken
-- ✅ Test eerst met dry run voordat je echt versies verwijdert
-- ✅ Backup kritieke data
+- Altijd `npm start` of `npm run dev` gebruiken (niet rechtstreeks node server.js)
+- `.env` bestand in `.gitignore` toevoegen (geheim!)
+- Regelmatig admin consent vernieuwing checken
+- Test eerst met dry run voordat je echt versies verwijdert
+- Backup kritieke data
 
 ### Efficiëntie
-- ✅ Groepeer site cleanups om servers niet te overbelasten
-- ✅ Voer bulk operations uit in offpiek uren
-- ✅ Controleer cache status vóór herhaalde runs
-- ✅ Monitor Graph API quotas in Azure Portal
+- Groepeer site cleanups om servers niet te overbelasten
+- Voer bulk operations uit in offpiek uren
+- Controleer cache status vóór herhaalde runs
+- Monitor Graph API quotas in Azure Portal
 
 ### Maintenance
-- ✅ Update Node.js en dependencies regelmatig
-- ✅ Review server logs voor errors
-- ✅ Clear browser cache als je UI problemen hebt
-- ✅ Verwijder oude localStorage data (DevTools → Application)
+- Update Node.js en dependencies regelmatig
+- Review server logs voor errors
+- Clear browser cache als je UI problemen hebt
+- Verwijder oude localStorage data (DevTools → Application)
 
 ## Architectuur Overwegingen
 
