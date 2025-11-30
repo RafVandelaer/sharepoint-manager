@@ -143,6 +143,11 @@ app.get('/api/admin/ephemeral', requireAdmin, (req, res) => {
     res.json({ status: adminTokenService.status(), method: req.adminAuth.method });
 });
 
+// 404 handler - serve custom 404 page
+app.use((req, res, next) => {
+    res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error(err.stack);

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Background circle with gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="iconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e8eaf6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <circle cx="50" cy="50" r="48" fill="url(#bgGradient)"/>
+  
+  <!-- SharePoint-style folder icon -->
+  <g fill="url(#iconGradient)">
+    <!-- Folder base -->
+    <path d="M 25 35 L 25 70 Q 25 73 28 73 L 72 73 Q 75 73 75 70 L 75 40 Q 75 37 72 37 L 48 37 L 43 32 Q 42 30 40 30 L 28 30 Q 25 30 25 33 Z" />
+    
+    <!-- Folder tab highlight -->
+    <path d="M 25 35 L 40 35 L 43 32 Q 42 30 40 30 L 28 30 Q 25 30 25 33 Z" fill="#ffffff" opacity="0.3"/>
+    
+    <!-- Version indicator (3 dots) -->
+    <circle cx="50" cy="55" r="2.5" fill="#667eea"/>
+    <circle cx="58" cy="55" r="2.5" fill="#667eea"/>
+    <circle cx="66" cy="55" r="2.5" fill="#667eea"/>
+  </g>
+  
+  <!-- Subtle shadow -->
+  <ellipse cx="50" cy="92" rx="35" ry="3" fill="#000000" opacity="0.1"/>
+</svg>
