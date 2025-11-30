@@ -26,8 +26,9 @@ function toggleDarkMode() {
         icon.classList.add('persistent-moon');
     }
     
-    // Update charts for dark mode
-    updateChartsForTheme(newTheme);
+    // Force page reload to rebuild charts with correct colors
+    // This is more reliable than trying to update Chart.js legend labels dynamically
+    window.location.reload();
 }
 
 function initializeDarkMode() {
@@ -89,6 +90,7 @@ function updateChartsForTheme(theme) {
     // Global defaults (Chart.js v4)
     if (window.Chart) {
         Chart.defaults.color = textColor;
+        Chart.defaults.borderColor = gridColor;
         Chart.defaults.font.family = 'system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif';
         if (Chart.defaults.plugins && Chart.defaults.plugins.tooltip) {
             Chart.defaults.plugins.tooltip.backgroundColor = tooltipBg;
@@ -96,6 +98,10 @@ function updateChartsForTheme(theme) {
             Chart.defaults.plugins.tooltip.bodyColor = textColor;
             Chart.defaults.plugins.tooltip.borderColor = tooltipBorder;
             Chart.defaults.plugins.tooltip.borderWidth = 1;
+        }
+        if (Chart.defaults.plugins && Chart.defaults.plugins.legend) {
+            Chart.defaults.plugins.legend.labels = Chart.defaults.plugins.legend.labels || {};
+            Chart.defaults.plugins.legend.labels.color = textColor;
         }
     }
 
@@ -110,6 +116,13 @@ function updateChartsForTheme(theme) {
                 if (scale.grid) scale.grid.color = gridColor;
                 if (scale.title) scale.title.color = textColor;
             });
+        }
+        // Update plugin title/subtitle colors if they exist
+        if (chart.options.plugins?.title) {
+            chart.options.plugins.title.color = textColor;
+        }
+        if (chart.options.plugins?.subtitle) {
+            chart.options.plugins.subtitle.color = isDark ? '#94a3b8' : '#718096';
         }
         // Dataset color adjustments for better dark/light contrast + multi-hue palettes
         if (chart.data && Array.isArray(chart.data.datasets)) {
@@ -139,7 +152,8 @@ function updateChartsForTheme(theme) {
                         // Re-map with slightly brighter palette for dark
                         const palette = ['#10b981','#fbbf24','#f87171'];
                         ds.backgroundColor = palette.map(c => c + 'CC');
-                        ds.borderColor = palette;
+                        ds.borderColor = '#1e293b'; // Dark background color for borders
+                        ds.borderWidth = 2;
                     } else {
                         ds.backgroundColor = [
                             'rgba(72, 187, 120, 0.8)',
@@ -147,12 +161,15 @@ function updateChartsForTheme(theme) {
                             'rgba(245, 101, 101, 0.8)'
                         ];
                         ds.borderColor = '#ffffff';
+                        ds.borderWidth = 2;
                     }
                 }
             });
         }
-        // Transparent canvas so parent card background shows through
-        chart.update();
+        // Force complete re-render with new colors
+        chart.update('none'); // Update data first without animation
+        chart.resize(); // Force recalculation of layout
+        chart.render(); // Force complete redraw
     };
 
     updateCommon(window.storageChart);

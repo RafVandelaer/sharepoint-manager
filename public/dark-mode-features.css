@@ -519,8 +519,28 @@ input[type="number"]::placeholder {
 [data-theme="dark"] .tenant-dropdown-btn .tenant-icon { color: #A5B4FC; }
 .tenant-dropdown-btn .tenant-caret { color: var(--text-secondary); }
 [data-theme="dark"] .tenant-dropdown-btn .tenant-caret { color: #A0AEC0; }
-.tenant-dropdown-menu { background: var(--bg-primary); border:1px solid var(--border-color); box-shadow: var(--shadow-md); border-radius:10px; padding:8px; }
-[data-theme="dark"] .tenant-dropdown-menu { background: var(--bg-secondary); color: #E8EDFF; }
+.tenant-dropdown-menu { background: var(--bg-primary); border:1px solid var(--color-border, var(--border-color)); box-shadow: var(--shadow-md); border-radius:10px; padding:8px; }
+[data-theme="dark"] .tenant-dropdown-menu { background: var(--bg-secondary); border-color: #30363d; color: #E8EDFF; }
+
+/* Generic dropdown menu styling (used by tenant-selector.js) */
+.dropdown-menu { 
+  background: var(--bg-primary); 
+  border: 1px solid var(--border-color); 
+  box-shadow: var(--shadow-md); 
+  border-radius: 10px; 
+  padding: 8px;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  z-index: 1000;
+}
+[data-theme="dark"] .dropdown-menu { 
+  background: var(--bg-secondary); 
+  border-color: var(--border-color);
+  color: #E8EDFF; 
+}
+
 .tenant-dropdown-divider { height:1px; background: var(--border-color); margin:6px 0; }
 .tenant-dropdown-add { display:flex; align-items:center; gap:6px; padding:6px 8px; border-radius:6px; cursor:pointer; color: var(--accent-primary); }
 .tenant-dropdown-add:hover { background: var(--bg-tertiary); }
@@ -581,11 +601,11 @@ input[type="number"]::placeholder {
 [data-theme="dark"] .period-buttons { background: transparent; }
 .trend-toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
 .period-buttons { display:flex; gap:8px; }
-.period-btn { padding:8px 16px; border:1px solid var(--border-color); background: var(--bg-primary); color: var(--text-secondary); border-radius:6px; cursor:pointer; font-size:14px; transition: background-color .2s ease,color .2s ease,border-color .2s ease; }
+.period-btn { padding:8px 16px; border:2px solid transparent; background: transparent; color: var(--text-secondary); border-radius:6px; cursor:pointer; font-size:14px; transition: background-color .2s ease,color .2s ease,border-color .2s ease; }
 .period-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
 .period-btn.active { background: var(--accent-primary); color:#fff; border-color: var(--accent-primary); }
-[data-theme="dark"] .period-btn { background: var(--bg-secondary); color: var(--text-tertiary); }
-[data-theme="dark"] .period-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+[data-theme="dark"] .period-btn:not(.active) { background: var(--bg-secondary); color: var(--text-tertiary); border-color: #30363d; }
+[data-theme="dark"] .period-btn:not(.active):hover { background: var(--bg-tertiary); color: var(--text-primary); border-color: #475569; }
 [data-theme="dark"] .period-btn.active { background: var(--accent-primary); color:#fff; border-color: var(--accent-primary); }
 
 .sites-toolbar { display:flex; gap:12px; align-items:center; }

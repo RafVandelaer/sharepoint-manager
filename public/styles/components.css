@@ -64,6 +64,10 @@
   background: var(--color-surface-hover);
 }
 
+[data-theme="dark"] .btn-outline {
+  border-color: var(--color-border);
+}
+
 .btn-ghost {
   background: transparent;
   color: var(--color-text-secondary);
