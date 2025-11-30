@@ -95,6 +95,7 @@ async function saveConfig() {
             headers: {
                 'Content-Type': 'application/json'
             },
+            credentials: 'include', // Include cookies for session persistence
             body: JSON.stringify({
                 tenantId,
                 clientId,
@@ -142,23 +143,28 @@ async function saveConfig() {
 
 export async function checkConfigStatus() {
     const sessionId = state.sessionId || localStorage.getItem('sessionId');
-    
-    if (!sessionId) {
-        return { hasConfig: false };
-    }
 
     try {
+        // PERSISTENCE: Call without sessionId header first to allow cookie restoration
         const response = await fetch('/api/auth/config/status', {
-            headers: {
-                'X-Session-ID': sessionId
-            }
+            headers: sessionId ? { 'X-Session-ID': sessionId } : {},
+            credentials: 'include' // Include cookies
         });
 
         if (!response.ok) {
             return { hasConfig: false };
         }
 
-        return await response.json();
+        const data = await response.json();
+        
+        // PERSISTENCE: If server returned sessionId from cookie, update local state
+        if (data.sessionId && !state.sessionId) {
+            state.sessionId = data.sessionId;
+            localStorage.setItem('sessionId', data.sessionId);
+            console.log('Session restored from server cookie:', data.sessionId);
+        }
+        
+        return data;
     } catch (error) {
         console.error('Error checking config status:', error);
         return { hasConfig: false };

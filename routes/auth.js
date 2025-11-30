@@ -127,8 +127,23 @@ router.post('/config', configRateLimiter, async (req, res) => {
         // Generate session ID for this user's config
         const sessionId = configService.generateSessionId();
         
-        // Store config
+        // Store config in memory
         configService.setConfig(sessionId, testConfig);
+
+        // PERSISTENCE: Store session in encrypted cookie (survives server restart)
+        const sessionData = {
+            sessionId,
+            config: testConfig,
+            createdAt: Date.now()
+        };
+        const encryptedSession = req.app.locals.encryptSession(sessionData);
+        
+        res.cookie('sp_session', encryptedSession, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production', // HTTPS only in prod
+            sameSite: 'lax'
+            // No maxAge = session cookie (cleared on browser restart)
+        });
 
         // Legacy logging
         logger.logTenantConfig('CONFIG_CREATED', sessionId, {
@@ -143,7 +158,7 @@ router.post('/config', configRateLimiter, async (req, res) => {
             permissionsValidated: true
         });
 
-        console.log(`Config set for session: ${sessionId} (credentials validated)`);
+        console.log(`Config set for session: ${sessionId} (credentials validated + cookie stored)`);
 
         res.json({ 
             sessionId,
@@ -158,20 +173,51 @@ router.post('/config', configRateLimiter, async (req, res) => {
 
 // GET /api/auth/config/status - Check if user has config set
 router.get('/config/status', async (req, res) => {
-    const sessionId = req.headers['x-session-id'];
+    let sessionId = req.headers['x-session-id'];
+    
+    // PERSISTENCE: Try to restore session from cookie if header missing
+    if (!sessionId && req.cookies.sp_session) {
+        const sessionData = req.app.locals.decryptSession(req.cookies.sp_session);
+        if (sessionData) {
+            sessionId = sessionData.sessionId;
+            
+            // Restore config to memory if missing (after server restart)
+            if (!configService.hasConfig(sessionId) && sessionData.config) {
+                configService.setConfig(sessionId, sessionData.config);
+                console.log(`Session restored from cookie: ${sessionId}`);
+            }
+        }
+    }
     
     if (!sessionId) {
         return res.json({ hasConfig: false });
     }
 
     const hasConfig = configService.hasConfig(sessionId);
-    res.json({ hasConfig });
+    res.json({ 
+        hasConfig,
+        sessionId: hasConfig ? sessionId : undefined // Return sessionId for frontend
+    });
 });
 
 // User login (delegated permissions)
 router.get('/login', async (req, res) => {
     try {
-        const sessionId = req.headers['x-session-id'];
+        let sessionId = req.headers['x-session-id'];
+        
+        // PERSISTENCE: Try to restore session from cookie
+        if (!sessionId && req.cookies.sp_session) {
+            const sessionData = req.app.locals.decryptSession(req.cookies.sp_session);
+            if (sessionData) {
+                sessionId = sessionData.sessionId;
+                
+                // Restore config to memory if missing (after server restart)
+                if (!configService.hasConfig(sessionId) && sessionData.config) {
+                    configService.setConfig(sessionId, sessionData.config);
+                    console.log(`Session restored from cookie for login: ${sessionId}`);
+                }
+            }
+        }
         
         if (!sessionId || !configService.hasConfig(sessionId)) {
             return res.status(400).json({ 
@@ -227,6 +273,25 @@ router.get('/callback', async (req, res) => {
 
         // Store authService instance for later SharePoint token acquisition
         authServiceCache.set(sessionId, authService);
+
+        // PERSISTENCE: Update cookie with token info (encrypted)
+        const sessionData = {
+            sessionId,
+            config: config,
+            token: {
+                expiresOn: tokenResponse.expiresOn,
+                account: tokenResponse.account?.username
+            },
+            updatedAt: Date.now()
+        };
+        const encryptedSession = req.app.locals.encryptSession(sessionData);
+        
+        res.cookie('sp_session', encryptedSession, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax'
+            // No maxAge = session cookie (cleared on browser restart)
+        });
 
         const expiresIn = Math.round((new Date(tokenResponse.expiresOn) - new Date()) / 1000 / 60);
         
@@ -326,20 +391,29 @@ router.post('/logout/:sessionId', (req, res) => {
     const hadConfig = configService.hasConfig(sessionId);
     configService.deleteConfig(sessionId);
     
+    // PERSISTENCE: Clear the session cookie
+    res.clearCookie('sp_session', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax'
+    });
+    
     // Legacy logging
     logger.logAuth('LOGOUT', sessionId, {
         hadToken,
         hadConfig,
-        tenantId
+        tenantId,
+        cookieCleared: true
     });
 
     // Privacy-first audit logging
     auditLogger.logAudit('LOGOUT', sessionId, tenantId, null, {
         hadToken,
-        hadConfig
+        hadConfig,
+        cookieCleared: true
     });
     
-    console.log(`Session ${sessionId} logged out (token: ${hadToken}, config: ${hadConfig})`);
+    console.log(`Session ${sessionId} logged out (token: ${hadToken}, config: ${hadConfig}, cookie cleared)`);
     
     res.json({ success: true });
 });

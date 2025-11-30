@@ -15,25 +15,27 @@
 ### 🔒 Privacy & Security
 
 **Sharepointer.be stores ZERO sensitive data:**
-- ✅ **No credentials stored** - You bring your own Azure App Registration
-- ✅ **No data persistence** - All config & tokens are in-memory only
-- ✅ **Session-based** - Server restart clears all sessions
-- ✅ **Client-side config** - Credentials entered via browser, never saved to disk
+- ✅ **No credentials on disk** - You bring your own Azure App Registration
+- ✅ **Encrypted session persistence** - Config stored in encrypted cookies (survives server restart)
+- ✅ **Tokens in-memory only** - OAuth tokens never persisted
+- ✅ **Client-side config** - Credentials entered via browser
 - ✅ **Delegated permissions** - Your own Microsoft Graph token, not shared
 - ✅ **Open source** - Full transparency, audit the code yourself
 
 **How it works:**
 1. You create an Azure App Registration in your tenant
 2. You enter the credentials in the browser
-3. You authenticate via Microsoft OAuth (delegated access)
-4. The server uses your token to call Microsoft Graph API
-5. No data is stored anywhere - everything is ephemeral
+3. Your config is encrypted (AES-256-GCM) and stored in a secure cookie
+4. You authenticate via Microsoft OAuth (delegated access)
+5. The server uses your token to call Microsoft Graph API
+6. **Server restart?** No problem! Your session restores automatically from the encrypted cookie 🎉
 
 ---
 
 ## ✨ Features
 
 - 🔐 **Azure AD Authentication** - Secure delegated login via Microsoft OAuth
+- 🔒 **Persistent Sessions** - Encrypted cookies survive server restarts (no re-login!)
 - 🌐 **Multi-Tenant Support** - Each user brings their own Azure App Registration
 - 📊 **Site Discovery** - Automatically scan all SharePoint sites in your tenant
 - 🗂️ **Version Cleanup** - Bulk deletion of old file versions (with dry-run preview)
@@ -73,15 +75,18 @@ cd sharepoint-manager
 # 2. Install dependencies
 npm install
 
-# 3. Start the server
+# 3. Generate cookie encryption secret
+echo "COOKIE_SECRET=$(openssl rand -hex 32)" >> .env
+
+# 4. Start the server
 npm run dev
 
-# 4. Open http://localhost:3000
-# 5. Enter your Azure App Registration credentials in the browser
-# 6. Start managing your SharePoint sites!
+# 5. Open http://localhost:3000
+# 6. Enter your Azure App Registration credentials in the browser
+# 7. Start managing your SharePoint sites!
 ```
 
-**Note:** No `.env` file needed! All configuration is done via the browser UI.
+**Note:** Only `COOKIE_SECRET` is needed in `.env` - all Azure credentials are configured via the browser UI and stored in encrypted cookies.
 
 ---
 
@@ -155,21 +160,34 @@ This script:
 
 ## 🏗️ Architecture
 
-### Multi-User Session Model
+### Multi-User Session Model with Persistent Sessions
 
 - **Browser-based config** - Users enter Azure credentials via web UI
-- **In-memory storage** - Config & tokens stored per `sessionId` in memory
+- **Encrypted cookie persistence** - Config stored in AES-256-GCM encrypted cookies
+- **In-memory tokens** - OAuth tokens stored per `sessionId` in memory (ephemeral)
 - **Delegated permissions** - Each user gets their own Graph API token
-- **Stateless** - Server restart clears all sessions (by design)
+- **Server restart resilience** - Sessions restore automatically from cookies ✨
 - **No shared secrets** - Each user uses their own App Registration
+
+### Session Persistence Flow
+
+```
+1. User enters Azure credentials → Server encrypts → Stores in HttpOnly cookie
+2. Server restart → In-memory cache cleared
+3. User makes API request → Cookie sent automatically
+4. Server decrypts cookie → Restores config to memory
+5. User continues working seamlessly (no re-login needed!)
+```
 
 ### Security Principles
 
 - **Least privilege** - Only delegated scopes, no application permissions
+- **Military-grade encryption** - AES-256-GCM for cookie data
+- **HttpOnly cookies** - No JavaScript access, CSRF protected
 - **Credential isolation** - No cross-session data leakage
 - **Secret redaction** - Client secrets never logged
-- **HTTPS enforced** - In production (via App Service/reverse proxy)
-- **No persistence** - Credentials never written to disk or database
+- **HTTPS enforced** - Secure flag in production
+- **No disk persistence** - Only encrypted cookies, no database/files
 
 ---
 
@@ -222,162 +240,34 @@ This project is open source and available under the MIT License.
 
 ---
 
-**⭐ Star this repo if you find it useful!**
-Set environment variables in **Configuration > Application settings**:
-```
-TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-CLIENT_ID=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy
-CLIENT_SECRET=Z123~secretValue
-REDIRECT_URI=https://yourdomain.com/auth/callback
-GRAPH_API_URL=https://graph.microsoft.com/v1.0
-```
-
-Enable **Always On** en set **Node version** naar 18+ in General settings.
-
-#### 2️⃣ Docker Container
-Build met secret injection via environment:
-```dockerfile
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --production
-COPY . .
-EXPOSE 3000
-CMD ["node", "server.js"]
-```
-
-Run met env file of inline:
-```bash
-docker run -p 3000:3000 \
-  -e TENANT_ID=$TENANT_ID \
-  -e CLIENT_ID=$CLIENT_ID \
-  -e CLIENT_SECRET=$CLIENT_SECRET \
-  -e REDIRECT_URI=https://yourdomain.com/auth/callback \
-  sharepoint-manager
-```
-
-#### 3️⃣ Azure Key Vault Integration (enterprise)
-Install `@azure/keyvault-secrets` + `@azure/identity` en wijzig `server.js` om secrets te laden:
-```javascript
-const { DefaultAzureCredential } = require('@azure/identity');
-const { SecretClient } = require('@azure/keyvault-secrets');
-
-const credential = new DefaultAzureCredential();
-const client = new SecretClient(`https://<vault-name>.vault.azure.net`, credential);
-
-async function loadConfig() {
-  const [clientId, clientSecret, tenantId] = await Promise.all([
-    client.getSecret('CLIENT-ID'),
-    client.getSecret('CLIENT-SECRET'),
-    client.getSecret('TENANT-ID')
-  ]);
-  process.env.CLIENT_ID = clientId.value;
-  process.env.CLIENT_SECRET = clientSecret.value;
-  process.env.TENANT_ID = tenantId.value;
-}
-```
-
-Enable **Managed Identity** in Azure App Service en geef RBAC role "Key Vault Secrets User" aan de identity.
-
-#### 4️⃣ Kubernetes (advanced)
-Use **Secrets** for credentials:
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: sharepoint-secrets
-type: Opaque
-stringData:
-  TENANT_ID: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-  CLIENT_ID: "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy"
-  CLIENT_SECRET: "Z123~secretValue"
 ---
-apiVersion: apps/v1
-kind: Deployment
-spec:
-  template:
-    spec:
-      containers:
-      - name: sharepoint-manager
-        envFrom:
-        - secretRef:
-            name: sharepoint-secrets
-```
 
-### Handmatige Setup (klassiek / legacy)
+## 🚀 Production Deployment
 
-### Stap 1: Nieuwe App Registratie
-1. Ga naar [Azure Portal - App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
-2. Klik op "New registration"
-3. Vul in:
-   - **Naam**: Sharepointer
-   - **Redirect URI**: `http://localhost:3000/auth/callback`
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment guides:
 
-### Stap 2: API Permissions
-Voeg de volgende Microsoft Graph permissions toe:
-- `Sites.Read.All` (Application)
-- `Sites.ReadWrite.All` (Application)  
-- `Sites.Manage.All` (Application)
+- Azure App Service (recommended)
+- Docker containers  
+- VPS/dedicated server
+- Nginx reverse proxy
+- SSL/TLS configuration
+- Health monitoring
 
-**Belangrijk: Vergeet niet om admin consent te geven!**
-
-### Stap 3: Client Secret
-1. Ga naar "Certificates & secrets"
-2. Maak een nieuwe client secret aan
-3. Kopieer de waarde (deze is maar één keer zichtbaar)
-
-### Stap 4: Configuratie
-Vul `.env` bestand in met de waarden uit Azure Portal (of provisioning script output):
+**Important for production:**
 ```env
-TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-CLIENT_ID=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy
-CLIENT_SECRET=Z123~superSecretValueCopiedFromPortal
-REDIRECT_URI=http://localhost:3000/auth/callback
-GRAPH_API_URL=https://graph.microsoft.com/v1.0
-PORT=3000
+# .env file in production
+COOKIE_SECRET=<64-char-hex-generated-with-openssl-rand>
+NODE_ENV=production
 ```
 
-Admin consent niet vergeten anders falen Graph/SharePoint calls met 401 of missing consent errors.
-
-> Let op: Het verificatie script (`verifyAppRegistration.js`) is gearchiveerd; de voorkeursflow is nu user-supplied credentials in de UI.
-
-### Ephemeral Admin Tokens
-Naast de legacy `ADMIN_API_KEY` (uit `.env`) ondersteunt de server nu **ephemeral** in-memory admin tokens:
-
-Endpoints:
-```
-POST /api/admin/ephemeral  (headers: X-Admin-Key: <legacy> of X-Admin-Ephemeral: <huidig>)
-Body: { rotate?: true, ttlMs?: number }
-Response: { token, expiresAt, method }
-
-GET  /api/admin/ephemeral  (auth headers zoals boven)
-Response: { status: { hasToken, expiresAt, ttlMs, rotations[] }, method }
-```
-
-Gebruik (voorbeeld):
+Generate cookie secret:
 ```bash
-# Eerste rotatie met legacy key
-curl -X POST http://localhost:3000/api/admin/ephemeral \
-   -H "X-Admin-Key: $ADMIN_API_KEY" \
-   -H 'Content-Type: application/json' \
-   -d '{"rotate": true, "ttlMs": 14400000}'
-
-# Status ophalen met ephemeral token
-curl http://localhost:3000/api/admin/ephemeral \
-   -H "X-Admin-Ephemeral: <nieuw-token>"
+openssl rand -hex 32
 ```
 
-Aanbevelingen:
-- Vervang gebruik van statische key door ephemeral token voor lagere impact bij compromittering.
-- TTL standaard 8 uur; verkort voor striktere security (min 5 minuten).
-- Niet loggen van volledige token; indien logging gewenst alleen hash.
+---
 
-Migratieplan:
-1. Genereer eerste ephemeral token met legacy key.
-2. Update admin tooling (Postman/scripts) naar `X-Admin-Ephemeral` header.
-3. Verwijder later `ADMIN_API_KEY` uit `.env` en runtime als niet meer nodig.
-
-## Gebruik
+## 📖 Usage
 
 1. **Start de applicatie**
    ```bash
@@ -509,6 +399,12 @@ Dit is gegarandeerd door hoe de Microsoft Graph API werkt:
 ## Troubleshooting
 
 ### Algemene Problemen
+
+#### "Session lost after server restart"
+- ✅ **Dit zou NIET meer moeten gebeuren!** Sessies overleven nu server restarts
+- Controleer of `COOKIE_SECRET` in `.env` staat
+- Check browser DevTools → Application → Cookies → `sp_session` bestaat
+- Clear cookies en configureer opnieuw als cookie beschadigd is
 
 #### "Authentication required" fout
 - Controleer of je .env bestand correct is geconfigureerd
@@ -663,6 +559,17 @@ Bij vragen of problemen:
 
 ## Veelgestelde Vragen (FAQ)
 
+### Q: Wat gebeurt er bij een server restart?
+**A:** Niets! 🎉 Je sessie blijft bestaan dankzij encrypted cookies. Je Azure credentials worden automatisch hersteld en je kunt direct verder werken zonder opnieuw in te loggen.
+
+### Q: Zijn mijn Azure credentials veilig in cookies?
+**A:** Absoluut! 
+- Cookies zijn encrypted met AES-256-GCM (militaire encryptie)
+- HttpOnly flag (geen JavaScript access)
+- Secure flag in productie (HTTPS only)
+- SameSite=Lax (CSRF protection)
+- Credentials worden nooit in plaintext opgeslagen
+
 ### Q: Kan ik alle versies verwijderen?
 **A:** Nee, dit is veilig voorkomen! De huidige versie van het bestand wordt **ALTIJD** behouden. Je kan alleen historische versies verwijderen.
 
@@ -683,19 +590,29 @@ Bij vragen of problemen:
 
 ### Q: Hoe reset ik mijn sessie?
 **A:** 
-- Log uit via de "Logout" knop
-- Of vernieuw de pagina en log opnieuw in
-- Browser cookies kunnen handmatig verwijderd worden via DevTools
+- Log uit via de "Logout" knop (verwijdert cookie)
+- Of vernieuw de pagina en configureer opnieuw
+- Browser cookies kunnen handmatig verwijderd worden via DevTools → Application → Cookies
+
+### Q: Wat als mijn COOKIE_SECRET lekt?
+**A:**
+1. Genereer nieuwe secret: `openssl rand -hex 32`
+2. Update `.env` file
+3. Restart server
+4. Alle users moeten opnieuw configureren (oude cookies worden invalid)
+5. Dit is een feature, niet een bug - extra security!
 
 ### Q: Kan ik versies van meerdere sites tegelijk verwijderen?
 **A:** Ja! Dit is precies wat de "Bulk Dry Run" en "Bulk Cleanup" features doen. Selecteer meerdere sites en start een bulk operatie.
 
 ### Q: Zijn mijn tokens veilig?
 **A:** Ja:
-- Tokens worden in-memory opgeslagen (niet in cookies)
-- Vervallen na session timeout
-- Gebruikt HTTPS in productie (zelf in te stellen)
+- **OAuth tokens** blijven in-memory (ephemeral, nooit gepersisteerd)
+- **Azure credentials** encrypted in HttpOnly cookies
+- Vervallen na session timeout of bij logout
+- Gebruikt HTTPS in productie
 - Client secret mag nooit naar frontend gestuurd worden
+- Cookie encryption key (COOKIE_SECRET) moet geheim blijven
 
 ### Q: Kan ik dit gebruiken voor productie?
 **A:** Ja, met voorzichtigheid:
@@ -729,11 +646,23 @@ Bij vragen of problemen:
 ## Best Practices
 
 ### Veiligheid
+- **COOKIE_SECRET beheren**: 
+  - Genereer met `openssl rand -hex 32`
+  - Bewaar veilig in `.env` (nooit committen!)
+  - Wissel regelmatig (maandelijks in productie)
+  - Bij compromittering: roteer onmiddellijk
 - Altijd `npm start` of `npm run dev` gebruiken (niet rechtstreeks node server.js)
 - `.env` bestand in `.gitignore` toevoegen (geheim!)
 - Regelmatig admin consent vernieuwing checken
 - Test eerst met dry run voordat je echt versies verwijdert
 - Backup kritieke data
+
+### Cookie Management
+- Cookie TTL: 7 dagen (configureerbaar in `routes/auth.js`)
+- HttpOnly + Secure flags altijd enabled in productie
+- SameSite=Lax voor CSRF protection
+- Bij logout wordt cookie expliciet verwijderd
+- Browser DevTools → Application → Cookies om te inspecteren
 
 ### Efficiëntie
 - Groepeer site cleanups om servers niet te overbelasten

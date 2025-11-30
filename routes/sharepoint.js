@@ -61,8 +61,24 @@ const requireAuth = async (req, res, next) => {
             return next();
         }
 
-        // 3) Backward-compat: X-Session-ID header or sessionId query param
-        const sessionId = req.headers['x-session-id'] || req.query.sessionId;
+        // 3) X-Session-ID header or sessionId query param (with cookie fallback)
+        let sessionId = req.headers['x-session-id'] || req.query.sessionId;
+        
+        // PERSISTENCE: Try to restore session from cookie if header/query missing
+        if (!sessionId && req.cookies.sp_session) {
+            const sessionData = req.app.locals.decryptSession(req.cookies.sp_session);
+            if (sessionData) {
+                sessionId = sessionData.sessionId;
+                
+                // Restore config to memory if missing (after server restart)
+                const configService = require('../services/configService');
+                if (!configService.hasConfig(sessionId) && sessionData.config) {
+                    configService.setConfig(sessionId, sessionData.config);
+                    console.log(`Session restored from cookie in requireAuth: ${sessionId}`);
+                }
+            }
+        }
+        
         if (sessionId) {
             const token = await authRoutes.getToken(sessionId);
             if (token) {

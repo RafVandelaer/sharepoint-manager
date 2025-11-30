@@ -2,6 +2,8 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const cookieParser = require('cookie-parser');
+const crypto = require('crypto');
 const path = require('path');
 require('dotenv').config(); // Load .env file for ADMIN_API_KEY
 const logger = require('./services/logger');
@@ -24,11 +26,70 @@ logger.log('INFO', 'SERVER', 'STARTING', { port: PORT, mode: 'multi-user' });
 console.log('✓ Sharepointer starting in multi-user mode');
 console.log('✓ Users will configure their own Azure App Registration via the web interface');
 
+// Cookie encryption for persistent sessions (survives server restart)
+// Uses AES-256-GCM for authenticated encryption
+const COOKIE_SECRET = process.env.COOKIE_SECRET || (() => {
+  const secret = crypto.randomBytes(32).toString('hex');
+  console.warn('⚠️  No COOKIE_SECRET in .env. Generated temporary secret.');
+  console.warn('⚠️  Add this to .env for session persistence across restarts:');
+  console.warn(`COOKIE_SECRET=${secret}`);
+  return secret;
+})();
+
+// Encryption helpers for session data
+const SESSION_ALGORITHM = 'aes-256-gcm';
+function encryptSession(data) {
+  const iv = crypto.randomBytes(16);
+  const key = Buffer.from(COOKIE_SECRET, 'hex');
+  const cipher = crypto.createCipheriv(SESSION_ALGORITHM, key, iv);
+  
+  const encrypted = Buffer.concat([
+    cipher.update(JSON.stringify(data), 'utf8'),
+    cipher.final()
+  ]);
+  
+  const authTag = cipher.getAuthTag();
+  
+  // Format: iv:authTag:encrypted (all hex)
+  return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+function decryptSession(encryptedData) {
+  try {
+    const [ivHex, authTagHex, encryptedHex] = encryptedData.split(':');
+    const iv = Buffer.from(ivHex, 'hex');
+    const authTag = Buffer.from(authTagHex, 'hex');
+    const encrypted = Buffer.from(encryptedHex, 'hex');
+    const key = Buffer.from(COOKIE_SECRET, 'hex');
+    
+    const decipher = crypto.createDecipheriv(SESSION_ALGORITHM, key, iv);
+    decipher.setAuthTag(authTag);
+    
+    const decrypted = Buffer.concat([
+      decipher.update(encrypted),
+      decipher.final()
+    ]);
+    
+    return JSON.parse(decrypted.toString('utf8'));
+  } catch (err) {
+    logger.log('ERROR', 'SESSION', 'DECRYPT_FAILED', { error: err.message });
+    return null;
+  }
+}
+
+// Make encryption helpers available to routes
+app.locals.encryptSession = encryptSession;
+app.locals.decryptSession = decryptSession;
+
 // Increase timeout for long-running requests
 app.timeout = 10 * 60 * 1000; // 10 minutes
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true // Enable cookies for CORS
+}));
+app.use(cookieParser(COOKIE_SECRET)); // Signed cookies
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 

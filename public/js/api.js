@@ -4,7 +4,13 @@ import { state } from './state.js';
 async function fetchJson(path, { method = 'GET', headers = {}, body, signal } = {}) {
   const h = { 'Content-Type': 'application/json', ...headers };
   if (state.sessionId) h['X-Session-ID'] = state.sessionId;
-  const res = await fetch(path, { method, headers: h, body: body ? JSON.stringify(body) : undefined, signal });
+  const res = await fetch(path, { 
+    method, 
+    headers: h, 
+    body: body ? JSON.stringify(body) : undefined, 
+    signal,
+    credentials: 'include' // PERSISTENCE: Include cookies for session restoration
+  });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`HTTP ${res.status}: ${text}`);
