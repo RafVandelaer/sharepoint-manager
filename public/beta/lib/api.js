@@ -1,4 +1,11 @@
-// API Client for SharePoint Manager
+// API Client for Sharepointer
+const DEBUG_MODE = 0;
+const debug = {
+  log: (...args) => { if (DEBUG_MODE) console.log(...args); },
+  warn: (...args) => { if (DEBUG_MODE) console.warn(...args); },
+  error: (...args) => console.error(...args)
+};
+
 import { appStore } from './component.js';
 import { getTokenOptional } from './msal-auth.js';
 import { inspectToken, hasRequiredScopes } from './jwt-debug.js';
@@ -31,26 +38,26 @@ class ApiClient {
     
     if (bearer && !isDemoPath) {
       requestHeaders['Authorization'] = `Bearer ${bearer}`;
-      console.log('API request with Bearer token:', path, bearer.substring(0, 20) + '...');
+      debug.log('API request with Bearer token:', path, bearer.substring(0, 20) + '...');
       
       // Inspect token on first API call
       if (!this.tokenInspected) {
         this.tokenInspected = true;
-        console.log('First API call - inspecting token...');
+        debug.log('First API call - inspecting token...');
         inspectToken(bearer);
         hasRequiredScopes(bearer, ['Sites.Read.All', 'Sites.ReadWrite.All']);
       }
     } else if (sessionId && !isDemoPath) {
       requestHeaders['X-Session-ID'] = sessionId;
-      console.log('API request with Session ID:', path, sessionId);
+      debug.log('API request with Session ID:', path, sessionId);
     } else {
-      console.log('API request without auth (demo mode):', path);
+      debug.log('API request without auth (demo mode):', path);
     }
 
     // Add SharePoint REST token for library and versioning endpoints
     if (spRestToken && (/\/libraries/.test(path) || /\/versioning/.test(path))) {
       requestHeaders['X-SharePoint-Token'] = spRestToken;
-      console.log('Added X-SharePoint-Token header');
+      debug.log('Added X-SharePoint-Token header');
     }
 
     const config = {
@@ -187,7 +194,7 @@ class ApiClient {
     const eventSource = new EventSource(fullUrl);
 
     eventSource.addEventListener('open', () => {
-      console.log('SSE connection opened');
+      debug.log('SSE connection opened');
       onOpen?.();
     });
 
@@ -220,7 +227,7 @@ class ApiClient {
     });
 
     eventSource.addEventListener('close', () => {
-      console.log('SSE connection closed');
+      debug.log('SSE connection closed');
       onClose?.();
     });
 

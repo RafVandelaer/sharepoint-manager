@@ -6,6 +6,9 @@
 
 class DemoDataService {
   constructor() {
+    // Seeded random generator for consistent demo data
+    this.seed = 12345; // Fixed seed for reproducible results
+    
     this.siteNames = [
       'Marketing Team Site',
       'Sales Operations Hub',
@@ -44,6 +47,18 @@ class DemoDataService {
   }
 
   /**
+   * Seeded random number generator (LCG algorithm)
+   * Returns consistent random numbers for same seed
+   */
+  seededRandom() {
+    const a = 1103515245;
+    const c = 12345;
+    const m = 2147483648;
+    this.seed = (a * this.seed + c) % m;
+    return this.seed / m;
+  }
+
+  /**
    * Generate array of demo sites with realistic storage patterns
    */
   generateSites(count = 50) {
@@ -55,17 +70,17 @@ class DemoDataService {
       const name = this.siteNames[nameIndex] + suffix;
       
       // Realistic storage distribution: mostly small, some medium, few large
-      const rand = Math.random();
+      const rand = this.seededRandom();
       let usedGB;
       if (rand < 0.6) {
         // 60% small sites (< 1GB)
-        usedGB = Math.random() * 0.9 + 0.1;
+        usedGB = this.seededRandom() * 0.9 + 0.1;
       } else if (rand < 0.9) {
         // 30% medium sites (1-10GB)
-        usedGB = Math.random() * 9 + 1;
+        usedGB = this.seededRandom() * 9 + 1;
       } else {
         // 10% large sites (10-100GB)
-        usedGB = Math.random() * 90 + 10;
+        usedGB = this.seededRandom() * 90 + 10;
       }
 
       const usedBytes = usedGB * 1024 * 1024 * 1024;
@@ -108,10 +123,10 @@ class DemoDataService {
    * Generate version history metrics
    */
   generateVersionMetrics() {
-    const totalFiles = Math.floor(Math.random() * 5000) + 100;
-    const filesWithVersions = Math.floor(totalFiles * (Math.random() * 0.4 + 0.3)); // 30-70% have versions
-    const totalVersions = Math.floor(filesWithVersions * (Math.random() * 8 + 2)); // 2-10 versions avg
-    const versionsSize = totalVersions * (Math.random() * 5 + 1) * 1024 * 1024; // 1-6MB avg per version
+    const totalFiles = Math.floor(this.seededRandom() * 5000) + 100;
+    const filesWithVersions = Math.floor(totalFiles * (this.seededRandom() * 0.4 + 0.3)); // 30-70% have versions
+    const totalVersions = Math.floor(filesWithVersions * (this.seededRandom() * 8 + 2)); // 2-10 versions avg
+    const versionsSize = totalVersions * (this.seededRandom() * 5 + 1) * 1024 * 1024; // 1-6MB avg per version
 
     return {
       totalFiles,
@@ -127,7 +142,7 @@ class DemoDataService {
    * Get random date in the past (days ago)
    */
   getRandomDate(maxDaysAgo) {
-    const daysAgo = Math.floor(Math.random() * maxDaysAgo);
+    const daysAgo = Math.floor(this.seededRandom() * maxDaysAgo);
     const date = new Date();
     date.setDate(date.getDate() - daysAgo);
     return date.toISOString();
@@ -205,7 +220,7 @@ class DemoDataService {
       
       // Increment for next iteration (making next date higher)
       const growth = current * dailyGrowthPct;
-      const noise = (Math.random() - 0.4) * growth; // Slight upward bias
+      const noise = (this.seededRandom() - 0.4) * growth; // Slight upward bias
       current = current + growth + noise;
     }
     return trend;
@@ -223,7 +238,7 @@ class DemoDataService {
         id: 'demo-lib-1',
         name: 'Documents',
         usedGB: (parseFloat(site.storage.usedGB) * 0.6).toFixed(2),
-        itemCount: Math.floor(Math.random() * 2000) + 500,
+        itemCount: Math.floor(this.seededRandom() * 2000) + 500,
         webUrl: `${site.webUrl}/Shared Documents`,
         versioningEnabled: true,
         majorVersionLimit: 500,
@@ -236,8 +251,8 @@ class DemoDataService {
         id: 'demo-lib-2',
         name: 'Shared Documents',
         usedGB: (parseFloat(site.storage.usedGB) * 0.25).toFixed(2),
-        itemCount: Math.floor(Math.random() * 1000) + 200,
-        webUrl: `${site.webUrl}/Shared%20Documents`,
+        itemCount: Math.floor(this.seededRandom() * 1000) + 200,
+        webUrl: `${site.webUrl}/Documents`,
         versioningEnabled: true,
         majorVersionLimit: 100,
         enableMinorVersions: true,
@@ -249,7 +264,7 @@ class DemoDataService {
         id: 'demo-lib-3',
         name: 'Site Assets',
         usedGB: (parseFloat(site.storage.usedGB) * 0.1).toFixed(2),
-        itemCount: Math.floor(Math.random() * 500) + 50,
+        itemCount: Math.floor(this.seededRandom() * 500) + 50,
         webUrl: `${site.webUrl}/SiteAssets`,
         versioningEnabled: false,
         majorVersionLimit: 0,
@@ -262,7 +277,7 @@ class DemoDataService {
         id: 'demo-lib-4',
         name: 'Archive',
         usedGB: (parseFloat(site.storage.usedGB) * 0.05).toFixed(2),
-        itemCount: Math.floor(Math.random() * 300) + 20,
+        itemCount: Math.floor(this.seededRandom() * 300) + 20,
         webUrl: `${site.webUrl}/Archive`,
         versioningEnabled: true,
         majorVersionLimit: 50,

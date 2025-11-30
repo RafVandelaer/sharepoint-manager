@@ -25,10 +25,9 @@ class AuthService {
         }
         const authUrlParameters = {
             scopes: [
-                'https://graph.microsoft.com/Sites.Read.All',
-                'https://graph.microsoft.com/Sites.ReadWrite.All',
-                'https://graph.microsoft.com/Sites.Manage.All',
-                'https://graph.microsoft.com/Sites.FullControl.All'
+                'https://graph.microsoft.com/Sites.Read.All',       // Read sites, libraries, files, versions
+                'https://graph.microsoft.com/Sites.ReadWrite.All',  // Delete file versions
+                'https://graph.microsoft.com/Sites.FullControl.All' // Optional: Update versioning settings via SharePoint REST
             ],
             redirectUri: this.redirectUri,
             prompt: 'consent' // Force consent screen to show permissions
@@ -49,10 +48,9 @@ class AuthService {
         const tokenRequest = {
             code: code,
             scopes: [
-                'https://graph.microsoft.com/Sites.Read.All',
-                'https://graph.microsoft.com/Sites.ReadWrite.All',
-                'https://graph.microsoft.com/Sites.Manage.All',
-                'https://graph.microsoft.com/Sites.FullControl.All'
+                'https://graph.microsoft.com/Sites.Read.All',       // Read sites, libraries, files, versions
+                'https://graph.microsoft.com/Sites.ReadWrite.All',  // Delete file versions
+                'https://graph.microsoft.com/Sites.FullControl.All' // Optional: Update versioning settings via SharePoint REST
             ],
             redirectUri: this.redirectUri,
         };
@@ -70,10 +68,9 @@ class AuthService {
         const silentRequest = {
             account: account,
             scopes: [
-                'https://graph.microsoft.com/Sites.Read.All',
-                'https://graph.microsoft.com/Sites.ReadWrite.All',
-                'https://graph.microsoft.com/Sites.Manage.All',
-                'https://graph.microsoft.com/Sites.FullControl.All'
+                'https://graph.microsoft.com/Sites.Read.All',       // Read sites, libraries, files, versions
+                'https://graph.microsoft.com/Sites.ReadWrite.All',  // Delete file versions
+                'https://graph.microsoft.com/Sites.FullControl.All' // Optional: Update versioning settings via SharePoint REST
             ],
         };
 

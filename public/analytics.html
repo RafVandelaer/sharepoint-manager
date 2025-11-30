@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tenant Analytics - SharePoint Manager</title>
+    <title>Sharepointer</title>
     <!-- Version: 2025-11-27-001 - Fixed loadTrendChart global scope and quota display -->
     <link rel="stylesheet" href="/beta/styles/design-system.css">
     <link rel="stylesheet" href="/beta/styles/components.css">
@@ -1592,7 +1592,7 @@
             <a href="/analytics.html" class="app-logo">
                 <i class="fab fa-microsoft"></i>
                 <div class="app-title">
-                    SharePoint Manager
+                    Sharepointer
                     <span class="beta-badge">Beta</span>
                 </div>
             </a>
@@ -2018,11 +2018,11 @@
         window.IS_DEMO_MODE = IS_DEMO_MODE; // Expose globally for cleanup modal
         
         // DEBUG MODE: Set to 0 to disable console logs for end users, 1 to enable
-        const DEBUG_MODE = 1;
+        const DEBUG_MODE = 0;
         
         // Debug-aware console wrapper
         const debug = {
-            log: (...args) => DEBUG_MODE && console.log(...args),
+            log: (...args) => DEBUG_MODE && debug.log(...args),
             warn: (...args) => DEBUG_MODE && console.warn(...args),
             error: (...args) => console.error(...args) // Always show errors
         };
@@ -2980,7 +2980,7 @@
                 setTimeout(() => {
                     allRows[index].scrollIntoView({ 
                         behavior: 'smooth', 
-                        block: 'center' 
+                        block: 'start' 
                     });
                     // Add a brief highlight effect
                     allRows[index].style.transition = 'background-color 0.3s';
@@ -3314,14 +3314,14 @@
             }
             const isChecked = checkbox.checked;
             
-            console.log('toggleSelectAll called, isChecked:', isChecked);
+            debug.log('toggleSelectAll called, isChecked:', isChecked);
             
             selectedSites.clear();
             if (isChecked) {
                 allSitesData.forEach(site => selectedSites.add(site.id));
             }
             
-            console.log('Selected sites count:', selectedSites.size);
+            debug.log('Selected sites count:', selectedSites.size);
             
             // Update all checkboxes in the table
             document.querySelectorAll('.site-checkbox').forEach(cb => {
@@ -3353,7 +3353,7 @@
                 selectedSites.delete(siteId);
             }
             
-            console.log('toggleSiteSelection:', siteId, 'checked:', isChecked, 'total selected:', selectedSites.size);
+            debug.log('toggleSiteSelection:', siteId, 'checked:', isChecked, 'total selected:', selectedSites.size);
             
             // Update row styling
             if (checkbox) {
@@ -3374,7 +3374,7 @@
             const count = selectedSites.size;
             const totalSites = allSitesData.length;
             
-            console.log('updateBulkControls - selected:', count, 'total:', totalSites);
+            debug.log('updateBulkControls - selected:', count, 'total:', totalSites);
             
             // Update counter with proper HTML structure
             const counterElement = document.getElementById('selectionCounter');
@@ -3916,7 +3916,7 @@
                     const webGuid = lib.webId ? lib.webId.replace(/[{}]/g,'') : null;
                     const guidForUrl = listGuid || webGuid;
                     
-                    console.log(`Library: ${lib.name}`, { listId: lib.listId, webId: lib.webId, driveId: lib.id, webUrl: lib.webUrl });
+                    debug.log(`Library: ${lib.name}`, { listId: lib.listId, webId: lib.webId, driveId: lib.id, webUrl: lib.webUrl });
                     
                     let versionSettingsUrl = null;
                     let siteContentsUrl = `${baseUrl}/_layouts/15/viewlsts.aspx`;
@@ -3924,7 +3924,7 @@
                     if (guidForUrl) {
                         const encoded = encodeURIComponent(`{${guidForUrl.toUpperCase()}}`);
                         versionSettingsUrl = `${baseUrl}/_layouts/15/LstSetng.aspx?List=${encoded}`;
-                        console.log(`  → Version settings URL: ${versionSettingsUrl}`);
+                        debug.log(`  → Version settings URL: ${versionSettingsUrl}`);
                     }
                     
                     const links = versionSettingsUrl ? `
@@ -4074,7 +4074,7 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
             const oldTenantId = localStorage.getItem('msalTenantId');
             
             if (oldClientId && oldTenantId) {
-                console.log('Migreren oude MSAL configuratie...');
+                debug.log('Migreren oude MSAL configuratie...');
                 
                 // Check if already migrated
                 const existing = tenants.find(t => t.id === oldTenantId);
@@ -4175,7 +4175,7 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
                 }, 200);
             }
             
-            console.log('✓ Oude configuratie gemigreerd met naam:', tenantName);
+            debug.log('✓ Oude configuratie gemigreerd met naam:', tenantName);
         };
         
         // Load tenants from localStorage
@@ -4296,7 +4296,7 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
         }
 
         window.addTenant = function() {
-            console.log('Opening add tenant modal...');
+            debug.log('Opening add tenant modal...');
             
             // Close dropdown first
             const menu = document.getElementById('tenantDropdownMenu');
@@ -4341,13 +4341,12 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
                                     ${lang === 'nl' ? 'Vereiste Delegated Permissions:' : 'Required Delegated Permissions:'}
                                 </strong>
                                 <ul>
-                                    <li><code>Sites.Read.All</code></li>
-                                    <li><code>Sites.ReadWrite.All</code></li>
-                                    <li><code>Sites.Manage.All</code></li>
-                                    <li><code>Sites.FullControl.All</code> - ${lang === 'nl' ? 'Voor versioning' : 'For versioning'}</li>
+                                    <li><code>Sites.Read.All</code> - ${lang === 'nl' ? 'Sites en versies lezen' : 'Read sites and versions'}</li>
+                                    <li><code>Sites.ReadWrite.All</code> - ${lang === 'nl' ? 'Versies verwijderen' : 'Delete versions'}</li>
+                                    <li><code>Sites.FullControl.All</code> - ${lang === 'nl' ? 'Versioning settings aanpassen (optioneel)' : 'Update versioning settings (optional)'}</li>
                                 </ul>
                                 <p style="margin: 8px 0 0 0; font-size: 12px; color: #856404;">
-                                    <strong>Redirect URI:</strong> <code>${window.location.origin}/</code> (Web)
+                                    <strong>Redirect URI:</strong> <code>https://sharepointer.be/</code> (Web)
                                 </p>
                             </div>
                             
@@ -4428,7 +4427,7 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
             // Use tenant ID prefix as name if none provided
             const finalName = tenantName || (tenantId.substring(0, 8) + '...');
             
-            console.log('Saving tenant:', { tenantId, clientId, tenantName: finalName });
+            debug.log('Saving tenant:', { tenantId, clientId, tenantName: finalName });
             
             // Save to tenants list
             const newTenant = {
@@ -4439,17 +4438,17 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
             };
             
             tenants.push(newTenant);
-            console.log('Tenant toegevoegd aan array, totaal:', tenants.length);
+            debug.log('Tenant toegevoegd aan array, totaal:', tenants.length);
             
             saveTenants();
-            console.log('Tenant opgeslagen in localStorage');
+            debug.log('Tenant opgeslagen in localStorage');
             
             updateTenantDropdown();
-            console.log('Dropdown UI geüpdatet');
+            debug.log('Dropdown UI geüpdatet');
             
             // Auto-select the new tenant
             selectTenant(tenantId);
-            console.log('Nieuwe tenant geselecteerd');
+            debug.log('Nieuwe tenant geselecteerd');
             
             // Close modal
             closeAddTenantModal();
@@ -4582,7 +4581,7 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
                 updateTenantDropdown();
                 closeEditTenantModal();
                 
-                console.log(`Tenant naam gewijzigd naar: ${newName}`);
+                debug.log(`Tenant naam gewijzigd naar: ${newName}`);
             }
         };
 
@@ -4706,9 +4705,9 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
                 isAuthenticated = false;
                 renderAuthUI();
                 
-                // Auto-open login modal only if no config exists
-                if (!msalConfigured) {
-                    setTimeout(() => showLoginModal(), 500);
+                // Auto-open Add Tenant modal only if no config exists AND not in demo mode
+                if (!msalConfigured && !IS_DEMO_MODE) {
+                    setTimeout(() => openAddTenantModal(), 500);
                 }
             } catch (error) {
                 console.error('Auth initialization error:', error);

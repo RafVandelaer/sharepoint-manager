@@ -1,4 +1,4 @@
-// Optimized SharePoint Manager Application
+// Optimized Sharepointer Application
 import { initAuth, handleLoginRedirect, login, logout, isAuthenticated } from './api.js';
 import { setupEventSource, createEventHandler } from './sse.js';
 import { getAppState, updateAppState } from './state.js';

@@ -184,13 +184,12 @@ export class LoginModal extends Component {
           <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: 12px; margin: 12px 0; font-size: 13px;">
             <strong style="display: block; margin-bottom: 8px;"><i class="fas fa-key" style="color: #ffc107;"></i> Vereiste Delegated Permissions:</strong>
             <ul style="margin: 0; padding-left: 20px;">
-              <li><code>Sites.Read.All</code></li>
-              <li><code>Sites.ReadWrite.All</code></li>
-              <li><code>Sites.Manage.All</code></li>
-              <li><code>Sites.FullControl.All</code> - Voor versioning</li>
+              <li><code>Sites.Read.All</code> - Sites en versies lezen</li>
+              <li><code>Sites.ReadWrite.All</code> - Versies verwijderen</li>
+              <li><code>Sites.FullControl.All</code> - Versioning settings aanpassen (optioneel)</li>
             </ul>
             <p style="margin: 8px 0 0 0; font-size: 12px; color: #856404;">
-              <strong>Redirect URI:</strong> <code>${window.location.origin}/auth/callback</code> (Web)
+              <strong>Redirect URI:</strong> <code>https://sharepointer.be/beta/</code> (Web)
             </p>
           </div>
           <div style="display:grid; grid-template-columns: 1fr; gap: 12px;">

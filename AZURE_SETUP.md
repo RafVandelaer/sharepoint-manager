@@ -1,4 +1,4 @@
-# Azure App Registration Setup for SharePoint Manager
+# Azure App Registration Setup for Sharepointer
 
 ## Problem
 Error: `AADSTS9002326: Cross-origin token redemption is permitted only for the 'Single-Page Application' client-type`
@@ -55,7 +55,7 @@ This means your app is registered as a **Web** application instead of a **Single
 5. Wait for status to show green checkmarks
 
 ### Step 5: Test
-1. Refresh the SharePoint Manager beta UI: `http://localhost:3000/beta/`
+1. Refresh the Sharepointer beta UI: `http://localhost:3000/beta/`
 2. Clear browser cache/localStorage if needed (F12 → Application → Clear storage)
 3. Enter your Tenant ID and Client ID
 4. Click "Configureer MSAL"

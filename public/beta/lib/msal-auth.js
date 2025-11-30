@@ -1,13 +1,19 @@
 // MSAL Browser auth helper (delegated, no client secret)
 // Relies on global `msal` from msal-browser script tag in beta/index.html
 
+const DEBUG_MODE = 0;
+const debug = {
+  log: (...args) => { if (DEBUG_MODE) console.log(...args); },
+  warn: (...args) => { if (DEBUG_MODE) console.warn(...args); },
+  error: (...args) => console.error(...args)
+};
+
 let pca = null;
 let currentAccount = null;
 let currentScopes = [
-  'Sites.Read.All',
-  'Sites.ReadWrite.All',
-  'Sites.Manage.All',
-  'Sites.FullControl.All'  // Required for versioning updates via SharePoint REST API
+  'Sites.Read.All',         // Read sites, libraries, files, and versions
+  'Sites.ReadWrite.All',    // Delete file versions
+  'Sites.FullControl.All'   // Optional: Update versioning settings via SharePoint REST API
 ];
 
 // Export pca for use in auth.js
@@ -43,7 +49,7 @@ export async function init(clientId, tenantId) {
     cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false }
   };
   
-  console.log('MSAL init with redirectUri:', baseUrl);
+  debug.log('MSAL init with redirectUri:', baseUrl);
   
   pca = new window.msal.PublicClientApplication(config);
   await pca.initialize();
@@ -55,7 +61,7 @@ export async function init(clientId, tenantId) {
     const response = await pca.handleRedirectPromise();
     if (response?.account) {
       currentAccount = response.account;
-      console.log('Redirect handled, account:', response.account.username);
+      debug.log('Redirect handled, account:', response.account.username);
       
       // Dispatch custom event for successful login
       window.dispatchEvent(new CustomEvent('msal-login-success', { 
@@ -63,7 +69,7 @@ export async function init(clientId, tenantId) {
       }));
     }
   } catch (e) {
-    console.warn('handleRedirectPromise error:', e);
+    debug.warn('handleRedirectPromise error:', e);
   }
   
   // Pick existing account if present
@@ -144,23 +150,23 @@ export async function acquireSharePointToken(host) {
     const request = { scopes: [scope], account: currentAccount };
     try {
       const resp = await pca.acquireTokenSilent(request);
-      console.log('Acquired SharePoint REST token (AllSites.FullControl) silently');
+      debug.log('Acquired SharePoint REST token (AllSites.FullControl) silently');
       return resp.accessToken;
     } catch (e) {
-      console.log('Silent SharePoint token acquisition failed:', e.message);
+      debug.log('Silent SharePoint token acquisition failed:', e.message);
       // Try interactive consent
-      console.log('Attempting interactive consent for SharePoint scope...');
+      debug.log('Attempting interactive consent for SharePoint scope...');
       try {
         await pca.acquireTokenRedirect({ scopes: [scope], account: currentAccount });
         // Execution stops; user will be redirected
         return null;
       } catch (redirectErr) {
-        console.warn('Interactive consent failed:', redirectErr.message);
+        debug.warn('Interactive consent failed:', redirectErr.message);
         return null;
       }
     }
   } catch (outer) {
-    console.warn('acquireSharePointToken error:', outer.message);
+    debug.warn('acquireSharePointToken error:', outer.message);
     return null;
   }
 }
@@ -179,10 +185,10 @@ export async function requestSharePointConsent(host) {
     if (!host) throw new Error('Host missing');
     // Use AllSites.FullControl for versioning updates
     const scope = `${host.replace(/\/$/, '')}/AllSites.FullControl`;
-    console.log('Redirecting for SharePoint consent:', scope);
+    debug.log('Redirecting for SharePoint consent:', scope);
     await pca.acquireTokenRedirect({ scopes: [scope] });
   } catch (e) {
-    console.warn('requestSharePointConsent error:', e.message);
+    debug.warn('requestSharePointConsent error:', e.message);
   }
 }
 

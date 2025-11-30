@@ -9,7 +9,7 @@ export function createNavBar(currentPage = 'home') {
                 <a href="/beta/index.html" class="app-logo">
                     <i class="fab fa-microsoft"></i>
                     <div class="app-title">
-                        SharePoint Manager
+                        Sharepointer
                         <span class="beta-badge">Beta</span>
                     </div>
                 </a>

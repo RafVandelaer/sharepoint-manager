@@ -1,4 +1,4 @@
-# SharePoint Manager
+# Sharepointer
 
 Een moderne web applicatie voor het beheren van SharePoint sites en het opschonen van bestandsversies via de Microsoft Graph API.
 
@@ -185,7 +185,7 @@ spec:
 1. Ga naar [Azure Portal - App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
 2. Klik op "New registration"
 3. Vul in:
-   - **Naam**: SharePoint Manager
+   - **Naam**: Sharepointer
    - **Redirect URI**: `http://localhost:3000/auth/callback`
 
 ### Stap 2: API Permissions

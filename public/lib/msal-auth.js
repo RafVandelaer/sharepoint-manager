@@ -1,12 +1,18 @@
 // MSAL Browser auth helper (delegated, no client secret)
 // Relies on global `msal` from msal-browser script tag in beta/index.html
 
+const DEBUG_MODE = 0;
+const debug = {
+  log: (...args) => { if (DEBUG_MODE) console.log(...args); },
+  warn: (...args) => { if (DEBUG_MODE) console.warn(...args); },
+  error: (...args) => console.error(...args)
+};
+
 let pca = null;
 let currentAccount = null;
 let currentScopes = [
-  'Sites.Read.All',
-  'Sites.ReadWrite.All',
-  'Sites.Manage.All'
+  'Sites.Read.All',         // Read sites, libraries, files, and versions
+  'Sites.ReadWrite.All'     // Delete file versions
 ];
 
 // Export pca for use in auth.js
@@ -23,7 +29,7 @@ function getStoredConfig() {
 export function initIfConfigured() {
   // Don't init if MSAL library is not loaded (main app doesn't load it)
   if (!window.msal) {
-    console.log('MSAL library not loaded, skipping init');
+    debug.log('MSAL library not loaded, skipping init');
     return false;
   }
   
@@ -48,7 +54,7 @@ export async function init(clientId, tenantId) {
     cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false }
   };
   
-  console.log('MSAL init with redirectUri:', baseUrl);
+  debug.log('MSAL init with redirectUri:', baseUrl);
   
   pca = new window.msal.PublicClientApplication(config);
   await pca.initialize();

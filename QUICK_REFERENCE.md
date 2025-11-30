@@ -1,4 +1,4 @@
-# SharePoint Manager - Quick Reference
+# Sharepointer - Quick Reference
 
 ## 🎯 Access URLs
 

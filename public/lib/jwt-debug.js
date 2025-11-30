@@ -3,9 +3,18 @@
  * Decodes access tokens to inspect claims and scopes
  */
 
+const DEBUG_MODE = 0;
+const debug = {
+  log: (...args) => { if (DEBUG_MODE) console.log(...args); },
+  warn: (...args) => { if (DEBUG_MODE) console.warn(...args); },
+  error: (...args) => console.error(...args),
+  group: (...args) => { if (DEBUG_MODE) console.group(...args); },
+  groupEnd: () => { if (DEBUG_MODE) console.groupEnd(); }
+};
+
 export function decodeJWT(token) {
     if (!token) {
-        console.warn('No token provided to decode');
+        debug.warn('No token provided to decode');
         return null;
     }
 
@@ -13,7 +22,7 @@ export function decodeJWT(token) {
         // JWT consists of 3 parts: header.payload.signature
         const parts = token.split('.');
         if (parts.length !== 3) {
-            console.error('Invalid JWT format - expected 3 parts');
+            debug.error('Invalid JWT format - expected 3 parts');
             return null;
         }
 
@@ -26,7 +35,7 @@ export function decodeJWT(token) {
 
         return JSON.parse(jsonPayload);
     } catch (error) {
-        console.error('Failed to decode JWT:', error);
+        debug.error('Failed to decode JWT:', error);
         return null;
     }
 }
@@ -37,31 +46,31 @@ export function decodeJWT(token) {
 export function inspectToken(token) {
     const decoded = decodeJWT(token);
     if (!decoded) {
-        console.error('Could not decode token');
+        debug.error('Could not decode token');
         return;
     }
 
-    console.group('Token Inspection');
-    console.log('Issuer (iss):', decoded.iss);
-    console.log('Audience (aud):', decoded.aud);
-    console.log('Subject (sub):', decoded.sub);
-    console.log('User Principal Name:', decoded.upn || decoded.preferred_username);
-    console.log('App ID:', decoded.appid);
+    debug.group('Token Inspection');
+    debug.log('Issuer (iss):', decoded.iss);
+    debug.log('Audience (aud):', decoded.aud);
+    debug.log('Subject (sub):', decoded.sub);
+    debug.log('User Principal Name:', decoded.upn || decoded.preferred_username);
+    debug.log('App ID:', decoded.appid);
     
     // Most important: scopes
     const scopes = decoded.scp || decoded.roles || [];
-    console.log('Scopes:', typeof scopes === 'string' ? scopes.split(' ') : scopes);
+    debug.log('Scopes:', typeof scopes === 'string' ? scopes.split(' ') : scopes);
     
     // Check expiration
     const now = Math.floor(Date.now() / 1000);
     const expiresIn = decoded.exp - now;
-    console.log('⏱️  Expires in:', expiresIn > 0 ? `${Math.floor(expiresIn / 60)} minutes` : 'EXPIRED');
+    debug.log('⏱️  Expires in:', expiresIn > 0 ? `${Math.floor(expiresIn / 60)} minutes` : 'EXPIRED');
     
     // Issued at
     const issuedAt = new Date(decoded.iat * 1000).toLocaleString();
-    console.log('Issued at:', issuedAt);
+    debug.log('Issued at:', issuedAt);
     
-    console.groupEnd();
+    debug.groupEnd();
     
     return decoded;
 }
@@ -77,11 +86,11 @@ export function hasRequiredScopes(token, requiredScopes = ['Sites.Read.All']) {
     const missing = requiredScopes.filter(scope => !tokenScopes.includes(scope));
     
     if (missing.length > 0) {
-        console.warn('Missing scopes:', missing);
-        console.log('Token has:', tokenScopes);
+        debug.warn('Missing scopes:', missing);
+        debug.log('Token has:', tokenScopes);
         return false;
     }
     
-    console.log('All required scopes present');
+    debug.log('All required scopes present');
     return true;
 }

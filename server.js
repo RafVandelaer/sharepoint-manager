@@ -21,7 +21,7 @@ const PORT = process.env.PORT || 3000;
 
 // NO environment variable validation needed - users set their own Azure config via browser
 logger.log('INFO', 'SERVER', 'STARTING', { port: PORT, mode: 'multi-user' });
-console.log('✓ SharePoint Manager starting in multi-user mode');
+console.log('✓ Sharepointer starting in multi-user mode');
 console.log('✓ Users will configure their own Azure App Registration via the web interface');
 
 // Increase timeout for long-running requests
@@ -156,7 +156,7 @@ app.listen(PORT, () => {
         timestamp: new Date().toISOString()
     });
     
-    console.log(`\nSharePoint Manager running on http://localhost:${PORT}`);
+    console.log(`\nSharepointer running on http://localhost:${PORT}`);
     console.log('Browser-based configuration: Users set their own Azure App Registration credentials');
     console.log('Security: No shared secrets, each user brings their own config');
     console.log('👥 Multi-user ready: Full session isolation per user\n');

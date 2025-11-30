@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Provision or update Azure AD (Entra ID) app registration for SharePoint Manager.
+# Provision or update Azure AD (Entra ID) app registration for Sharepointer.
 # REQUIREMENTS:
 # - Azure CLI installed (`az login` already done as tenant admin)
 # - Permissions: Directory access to create applications

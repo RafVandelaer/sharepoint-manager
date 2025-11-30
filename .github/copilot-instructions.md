@@ -1,4 +1,4 @@
-<!-- SharePoint Manager Project - Copilot Instructions -->
+<!-- Sharepointer Project - Copilot Instructions -->
 
 ## Architectuur Overzicht
 
@@ -116,7 +116,7 @@ Er worden **GEEN** environment variables of `.env` files gebruikt voor Azure cre
 7. Bij logout of server restart: config verloren, user moet opnieuw invoeren
 
 **Azure App Registration Setup (via browser instructies):**
-- Name: SharePoint Manager (of naar keuze user)
+- Name: Sharepointer (of naar keuze user)
 - Supported account types: "Accounts in this organizational directory only"
 - Redirect URI: Web → `https://<jouw-domein>/auth/callback`
 - Delegated permissions:

@@ -93,7 +93,7 @@ export class LoginModal extends Component {
                       <li style="margin-bottom: 8px;"><strong>${t('azureGuideStep2')}</strong></li>
                       <li style="margin-bottom: 8px;"><strong>${t('azureGuideStep3')}</strong>
                         <ul style="margin: 4px 0; padding-left: 20px;">
-                          <li>${t('azureGuideName')} <code>SharePoint Manager</code></li>
+                          <li>${t('azureGuideName')} <code>Sharepointer</code></li>
                           <li>${t('azureGuideAccountTypes')} <code>${t('azureGuideAccountTypesValue')}</code></li>
                           <li>${t('azureGuideRedirectUri')} <code>Web</code> → <code>${window.location.origin}/beta/</code></li>
                         </ul>

@@ -2,7 +2,7 @@
 
 ## Overzicht
 
-Privacy-first persistent audit trail systeem voor SharePoint Manager met:
+Privacy-first persistent audit trail systeem voor Sharepointer met:
 - **Anonymized user tracking** (SHA-256 hashing)
 - **Immutable audit logs** (append-only archive)
 - **Real-time analytics** (charts, trends, anomaly detection)
