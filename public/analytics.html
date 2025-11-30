@@ -2258,8 +2258,12 @@
                             <span class="cleanup-stat-value" id="versionsToRemove">0</span>
                         </div>
                         <div class="cleanup-stat-item">
+                            <span class="cleanup-stat-label">Storage Savings:</span>
+                            <span class="cleanup-stat-value" id="storageSavings">0 B</span>
+                        </div>
+                        <div class="cleanup-stat-item" style="grid-column: 1 / -1;">
                             <span class="cleanup-stat-label">Current Folder:</span>
-                            <span class="cleanup-stat-value cleanup-folder-path" id="currentFolder">-</span>
+                            <span class="cleanup-stat-value cleanup-folder-path" id="currentFolder" style="font-size: 13px; word-break: break-all; line-height: 1.4;">-</span>
                         </div>
                     </div>
 
@@ -3466,6 +3470,7 @@
             document.getElementById('cleanupStatusMessage').textContent = t('initializing');
             document.getElementById('filesProcessed').textContent = '0';
             document.getElementById('versionsToRemove').textContent = '0';
+            document.getElementById('storageSavings').textContent = '0 B';
             document.getElementById('currentFolder').textContent = '-';
             document.getElementById('cancelCleanupBtn').disabled = false;
             
@@ -3513,6 +3518,7 @@
                     document.getElementById('cleanupProgressBar').style.width = '100%';
                     document.getElementById('filesProcessed').textContent = result.result.filesProcessed;
                     document.getElementById('versionsToRemove').textContent = result.result.versionsRemoved;
+                    document.getElementById('storageSavings').textContent = result.result.totalStorageSavings || '0 B';
                     document.getElementById('currentFolder').textContent = result.result.currentFolder;
                     document.getElementById('cleanupStatusTitle').textContent = dryRun ? '✓ Dry Run Complete' : '✓ Cleanup Complete';
                     document.getElementById('cleanupStatusIcon').className = 'fas fa-check-circle';
@@ -4010,7 +4016,9 @@
                             // Listen for folder events (includes progress data)
                             es.addEventListener('folder', (event) => {
                                 const data = JSON.parse(event.data);
-                                document.getElementById('currentFolder').textContent = data.folderName || data.folderPath || '-';
+                                const folderName = data.folderName || data.folderPath || '-';
+                                document.getElementById('currentFolder').textContent = folderName;
+                                document.getElementById('currentFolder').title = folderName; // Full path on hover
                                 
                                 // Increment folder counter for progress estimation
                                 foldersProcessed++;
@@ -4054,6 +4062,9 @@
                                     const versions = data.totalVersionsToRemove || data.totalVersionsDeleted || 0;
                                     maxSiteVersions = Math.max(maxSiteVersions, versions);
                                     document.getElementById('versionsToRemove').textContent = totalVersions + maxSiteVersions;
+                                }
+                                if (data.totalStorageSavings) {
+                                    document.getElementById('storageSavings').textContent = data.totalStorageSavings;
                                 }
                             });
                             
@@ -5285,7 +5296,7 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
                     <span>By Raf Vandelaer</span>
                 </a>
                 <span style="color: var(--text-tertiary); font-size: 14px;">•</span>
-                <a href="/demo.html" style="display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); text-decoration: none; font-size: 14px; transition: color 0.2s;">
+                <a href="/demo" style="display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); text-decoration: none; font-size: 14px; transition: color 0.2s;">
                     <i class="fas fa-flask" style="font-size: 16px;"></i>
                     <span>Try Demo</span>
                 </a>

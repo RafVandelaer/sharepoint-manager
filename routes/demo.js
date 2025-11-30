@@ -164,6 +164,19 @@ router.post('/sites/:siteId/cleanup', (req, res) => {
     const batchSize = 25;
     const batches = Math.ceil(totalFiles / batchSize);
     const versionsRemovedTotal = Math.floor(totalFiles * (Math.random() * 0.6));
+    
+    // Calculate storage savings (realistic: 5-50 MB per file on average)
+    const avgSavingsPerFileBytes = (Math.random() * 45 + 5) * 1024 * 1024; // 5-50 MB
+    const totalStorageSavingsBytes = Math.floor(versionsRemovedTotal * avgSavingsPerFileBytes);
+    
+    // Format storage size
+    const formatBytes = (bytes) => {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
 
     const progress = [];
     for (let b = 0; b < batches; b++) {
@@ -182,6 +195,8 @@ router.post('/sites/:siteId/cleanup', (req, res) => {
       versionsKept: Number(versionsToKeep),
       filesProcessed: totalFiles,
       versionsRemoved: versionsRemovedTotal,
+      totalStorageSavings: formatBytes(totalStorageSavingsBytes),
+      totalStorageSavingsBytes: totalStorageSavingsBytes,
       durationMs: 1200 + batches * 250,
       currentFolder: progress[progress.length - 1]?.currentFolder || 'Demo/Library',
       progress

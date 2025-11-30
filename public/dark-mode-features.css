@@ -489,12 +489,20 @@ input[type="number"]::placeholder {
 }
 
 .cleanup-folder-path {
-    max-width: 300px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     font-family: 'Courier New', monospace;
-    font-size: 12px;
+    font-size: 13px;
+    word-break: break-all;
+    line-height: 1.4;
+    max-height: 3em;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+/* Full-width current folder item */
+.cleanup-stats .cleanup-stat-item:last-child {
+    grid-column: 1 / -1;
 }
 
 /* Navigation bar styling */
