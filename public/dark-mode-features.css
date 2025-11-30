@@ -227,6 +227,7 @@ html[data-theme] body, html[data-theme] .stat-card, html[data-theme] .chart-sect
 }
 
 .sites-table tbody tr {
+    background: var(--bg-primary);
     border-bottom: 1px solid var(--border-color);
     transition: background-color .2s ease;
 }

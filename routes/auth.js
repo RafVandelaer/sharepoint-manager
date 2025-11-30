@@ -64,16 +64,71 @@ router.post('/config', configRateLimiter, async (req, res) => {
             }
         }
 
-        // Generate session ID for this user's config
-        const sessionId = configService.generateSessionId();
-        
-        // Store config
-        configService.setConfig(sessionId, {
+        // Validate permissions by attempting to create AuthService and acquire a token
+        const testConfig = {
             tenantId,
             clientId,
             clientSecret,
             redirectUri: redirectUri || `${req.protocol}://${req.get('host')}/auth/callback`
-        });
+        };
+
+        try {
+            const authService = new AuthService(testConfig);
+            
+            // Try to get an app-only token to verify credentials and permissions
+            const tokenResponse = await authService.getAppOnlyToken();
+            
+            if (!tokenResponse || !tokenResponse.accessToken) {
+                return res.status(400).json({ 
+                    error: 'Failed to authenticate with provided credentials. Please verify your Azure App Registration settings.',
+                    hint: 'Ensure Client Secret is valid and not expired.'
+                });
+            }
+
+            // Verify that the token has the required Graph API permissions
+            // We'll make a test call to Graph API to check permissions
+            const { Client } = require('@microsoft/microsoft-graph-client');
+            const client = Client.init({
+                authProvider: (done) => {
+                    done(null, tokenResponse.accessToken);
+                }
+            });
+
+            try {
+                // Test API call - try to list sites (requires Sites.Read.All)
+                await client.api('/sites?$top=1').get();
+            } catch (graphError) {
+                console.error('Graph API permission check failed:', graphError);
+                
+                if (graphError.statusCode === 403 || graphError.statusCode === 401) {
+                    return res.status(400).json({ 
+                        error: 'Insufficient permissions. Please ensure your Azure App Registration has the required Microsoft Graph API permissions.',
+                        requiredPermissions: [
+                            'Sites.Read.All (Application)',
+                            'Sites.ReadWrite.All (Application)',
+                            'Sites.FullControl.All (Application)'
+                        ],
+                        hint: 'After adding permissions, grant admin consent in Azure Portal.'
+                    });
+                }
+                
+                // Other API errors might be transient, allow config to proceed
+                console.warn('Graph API test call failed but allowing config:', graphError.message);
+            }
+
+        } catch (authError) {
+            console.error('Credentials validation failed:', authError);
+            return res.status(400).json({ 
+                error: 'Invalid credentials. Please check your Tenant ID, Client ID, and Client Secret.',
+                details: authError.message
+            });
+        }
+
+        // Generate session ID for this user's config
+        const sessionId = configService.generateSessionId();
+        
+        // Store config
+        configService.setConfig(sessionId, testConfig);
 
         // Legacy logging
         logger.logTenantConfig('CONFIG_CREATED', sessionId, {
@@ -84,14 +139,16 @@ router.post('/config', configRateLimiter, async (req, res) => {
 
         // Privacy-first audit logging
         auditLogger.logAudit('CONFIG_CREATED', sessionId, tenantId, null, {
-            hasRedirectUri: !!redirectUri
+            hasRedirectUri: !!redirectUri,
+            permissionsValidated: true
         });
 
-        console.log(`Config set for session: ${sessionId}`);
+        console.log(`Config set for session: ${sessionId} (credentials validated)`);
 
         res.json({ 
             sessionId,
-            message: 'Configuration saved. You can now log in.'
+            message: 'Configuration saved and validated. You can now log in.',
+            validated: true
         });
     } catch (error) {
         console.error('Error setting config:', error);

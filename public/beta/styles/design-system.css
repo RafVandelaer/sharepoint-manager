@@ -21,7 +21,8 @@
   /* Neutrals */
   --color-bg: #faf9f8;
   --color-surface: #ffffff;
-  --color-surface-hover: #f5f5f5;
+  --color-surface-secondary: #f5f5f5;
+  --color-surface-hover: #f0f0f0;
   --color-border: #e1dfdd;
   --color-border-strong: #c8c6c4;
   --color-text: #323130;
@@ -81,6 +82,43 @@
   --z-modal: 1300;
   --z-toast: 1400;
   --z-tooltip: 1500;
+}
+
+/* Dark Mode Theme */
+[data-theme="dark"] {
+  /* Brand Colors - adjusted for dark mode */
+  --color-primary: #4a9eff;
+  --color-primary-hover: #3a8eef;
+  --color-primary-light: #1a3a5a;
+  --color-secondary: #8b5cf6;
+  --color-secondary-hover: #7c3aed;
+  
+  /* Semantic Colors */
+  --color-success: #34d399;
+  --color-success-light: #1a3a2a;
+  --color-warning: #fbbf24;
+  --color-warning-light: #3a2f1a;
+  --color-error: #f87171;
+  --color-error-light: #3a1a1a;
+  --color-info: #38bdf8;
+  --color-info-light: #1a2f3a;
+  
+  /* Neutrals - dark mode palette */
+  --color-bg: #0f172a;
+  --color-surface: #1e293b;
+  --color-surface-secondary: #243447;
+  --color-surface-hover: #2f3e52;
+  --color-border: #334155;
+  --color-border-strong: #475569;
+  --color-text: #f1f5f9;
+  --color-text-secondary: #cbd5e1;
+  --color-text-disabled: #64748b;
+  
+  /* Shadows - darker for dark mode */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.7);
 }
 
 /* Reset & Base Styles */
