@@ -4766,26 +4766,71 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
                         </div>
                         
                         <div class="modal-body">
-                            <p style="margin-top: 0; color: #495057; margin-bottom: 16px;">
-                                <i class="fas fa-info-circle" style="color:#0d6efd; margin-right:6px;"></i>
-                                ${lang === 'nl' 
-                                    ? 'Je hebt een Azure App Registration nodig met de juiste permissions' 
-                                    : 'You need an Azure App Registration with the correct permissions'}
-                            </p>
-                            
-                            <div class="permissions-box">
-                                <strong>
-                                    <i class="fas fa-key" style="color: #ffc107;"></i> 
-                                    ${lang === 'nl' ? 'Vereiste Delegated Permissions:' : 'Required Delegated Permissions:'}
-                                </strong>
-                                <ul>
-                                    <li><code>Sites.Read.All</code> - ${lang === 'nl' ? 'Sites en versies lezen' : 'Read sites and versions'}</li>
-                                    <li><code>Sites.ReadWrite.All</code> - ${lang === 'nl' ? 'Versies verwijderen' : 'Delete versions'}</li>
-                                    <li><code>Sites.FullControl.All</code> - ${lang === 'nl' ? 'Versioning settings aanpassen (optioneel)' : 'Update versioning settings (optional)'}</li>
-                                </ul>
-                                <p style="margin: 8px 0 0 0; font-size: 12px; color: #856404;">
-                                    <strong>Redirect URI:</strong> <code>https://sharepointer.be/</code> (Web)
-                                </p>
+                            <div class="azure-setup-guide">
+                                <div class="setup-intro">
+                                    <i class="fas fa-info-circle"></i>
+                                    <span>${lang === 'nl' 
+                                        ? 'Volg deze stappen om je Azure App Registration aan te maken:' 
+                                        : 'Follow these steps to create your Azure App Registration:'}
+                                    </span>
+                                </div>
+                                
+                                <div class="setup-steps">
+                                    <div class="setup-step">
+                                        <div class="step-number">1</div>
+                                        <div class="step-content">
+                                            <strong>${lang === 'nl' ? 'Open Azure Portal' : 'Open Azure Portal'}</strong>
+                                            <p>${lang === 'nl' 
+                                                ? 'Ga naar Azure Portal → Azure Active Directory → App registrations' 
+                                                : 'Go to Azure Portal → Azure Active Directory → App registrations'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="setup-step">
+                                        <div class="step-number">2</div>
+                                        <div class="step-content">
+                                            <strong>${lang === 'nl' ? 'Nieuwe registratie' : 'New registration'}</strong>
+                                            <p>${lang === 'nl' 
+                                                ? 'Klik op "New registration" en geef een naam (bijv. "Sharepointer")' 
+                                                : 'Click "New registration" and give it a name (e.g., "Sharepointer")'}
+                                            </p>
+                                            <p class="step-detail">Redirect URI: <code>https://sharepointer.be</code> (Single-page application)</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="setup-step">
+                                        <div class="step-number">3</div>
+                                        <div class="step-content">
+                                            <strong>${lang === 'nl' ? 'Permissions toevoegen' : 'Add permissions'}</strong>
+                                            <p>${lang === 'nl' 
+                                                ? 'API permissions → Add permission → Microsoft Graph → Delegated:' 
+                                                : 'API permissions → Add permission → Microsoft Graph → Delegated:'}
+                                            </p>
+                                            <ul class="permission-list">
+                                                <li><code>Sites.Read.All</code></li>
+                                                <li><code>Sites.ReadWrite.All</code></li>
+                                                <li><code>Sites.FullControl.All</code> <span class="optional">(${lang === 'nl' ? 'optioneel' : 'optional'})</span></li>
+                                            </ul>
+                                            <p class="step-detail">${lang === 'nl' ? 'Vergeet niet: "Grant admin consent"' : 'Don\'t forget: "Grant admin consent"'}</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="setup-step">
+                                        <div class="step-number">4</div>
+                                        <div class="step-content">
+                                            <strong>${lang === 'nl' ? 'Kopieer je credentials' : 'Copy your credentials'}</strong>
+                                            <p>${lang === 'nl' 
+                                                ? 'Overview → kopieer Tenant ID en Client ID naar onderstaand formulier' 
+                                                : 'Overview → copy Tenant ID and Client ID to the form below'}
+                                            </p>
+                                            <p class="step-detail">${lang === 'nl' 
+                                                ? '💡 Client secret is NIET nodig - dit is een frontend app met MSAL.js' 
+                                                : '💡 Client secret is NOT needed - this is a frontend app using MSAL.js'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             
                             <div class="config-form">
