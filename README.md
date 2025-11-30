@@ -1,103 +1,228 @@
-# Sharepointer
+# 📁 Sharepointer
 
-Een moderne web applicatie voor het beheren van SharePoint sites en het opschonen van bestandsversies via de Microsoft Graph API.
+> **A modern web application for managing SharePoint Online sites and cleaning up file versions using Microsoft Graph API**
 
-## Functionaliteiten
+[![Live Demo](https://img.shields.io/badge/🌐_Live_Demo-sharepointer.be-blue?style=for-the-badge)](https://sharepointer.be)
+[![GitHub](https://img.shields.io/badge/GitHub-RafVandelaer-black?style=for-the-badge&logo=github)](https://github.com/RafVandelaer)
 
-- **Azure AD Authenticatie** - Veilige login via Microsoft
-- **Site Discovery** - Automatisch scannen van alle SharePoint sites in je tenant
-- **Site Selectie** - Eenvoudige interface voor site selectie
-- **Versie Opschoning** - Bulk verwijdering van oude bestandsversies
-- **Moderne UI** - Responsieve en gebruiksvriendelijke interface
-- **Lokaal Development** - Geen complexe deployment vereist
-- **Ephemeral Admin Tokens** - Tijdelijke in-memory admin toegang naast legacy `ADMIN_API_KEY`
+---
 
-## Vereisten
+## 🚀 Try it Now
 
-- Node.js (versie 16 of hoger)
-- Azure AD App Registratie met juiste permissions
+**👉 [https://sharepointer.be](https://sharepointer.be)** - Working production instance  
+**🎮 [Demo Mode](https://sharepointer.be/demo.html)** - Test with sample data (no Azure setup required)
+
+### 🔒 Privacy & Security
+
+**Sharepointer.be stores ZERO sensitive data:**
+- ✅ **No credentials stored** - You bring your own Azure App Registration
+- ✅ **No data persistence** - All config & tokens are in-memory only
+- ✅ **Session-based** - Server restart clears all sessions
+- ✅ **Client-side config** - Credentials entered via browser, never saved to disk
+- ✅ **Delegated permissions** - Your own Microsoft Graph token, not shared
+- ✅ **Open source** - Full transparency, audit the code yourself
+
+**How it works:**
+1. You create an Azure App Registration in your tenant
+2. You enter the credentials in the browser
+3. You authenticate via Microsoft OAuth (delegated access)
+4. The server uses your token to call Microsoft Graph API
+5. No data is stored anywhere - everything is ephemeral
+
+---
+
+## ✨ Features
+
+- 🔐 **Azure AD Authentication** - Secure delegated login via Microsoft OAuth
+- 🌐 **Multi-Tenant Support** - Each user brings their own Azure App Registration
+- 📊 **Site Discovery** - Automatically scan all SharePoint sites in your tenant
+- 🗂️ **Version Cleanup** - Bulk deletion of old file versions (with dry-run preview)
+- 📈 **Analytics Dashboard** - Storage distribution, size categories, trend charts
+- 🎨 **Modern UI** - Responsive design with dark mode support
+- 🌍 **Multilingual** - English & Dutch translations
+- 🔄 **Real-time Progress** - Server-Sent Events for live cleanup progress
+- 🎯 **Granular Control** - Per-site or bulk operations
+
+---
+
+## 🎮 Demo Mode
+
+Want to try the interface without setting up Azure? Use the **[Demo Mode](https://sharepointer.be/demo.html)**:
+- Explore the full UI with sample data
+- Test all features (dry-run only)
+- No Azure App Registration needed
+- Perfect for evaluation before deployment
+
+---
+
+## 🛠️ Self-Hosting
+
+### Prerequisites
+
+- Node.js 16+ 
+- Azure AD App Registration (see setup below)
 - SharePoint Online tenant
 
-## Installatie
-
-1. **Clone het project**
-   ```bash
-   git clone <repository-url>
-   cd sharepoint-manager
-   ```
-
-2. **Installeer dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **(Optioneel) Legacy omgevingsvariabelen**  
-   De huidige architectuur laat gebruikers hun Azure App Registration credentials in de browser invoeren (multitenant per sessie). Een `.env` bestand is alleen nodig voor de (nog aanwezige) statische admin key of backward compatibility. Kopiëren:
-   ```bash
-   cp .env.example .env
-   ```
-   Voor productie is het aanbevolen de statische admin key te vervangen door een ephemeral token (zie sectie "Ephemeral Admin Tokens").
-
-## Snelstart (5 minuten)
-
-### Voor de haast:
+### Quick Start (5 minutes)
 
 ```bash
-# 1. Installeer
+# 1. Clone the repository
+git clone https://github.com/RafVandelaer/sharepoint-manager.git
+cd sharepoint-manager
+
+# 2. Install dependencies
 npm install
 
-# 2. Configureer (vul je Azure credentials in)
-nano .env  # of open .env in je editor
-
-# 3. Start
+# 3. Start the server
 npm run dev
 
 # 4. Open http://localhost:3000
-# 5. Log in en start scannen!
+# 5. Enter your Azure App Registration credentials in the browser
+# 6. Start managing your SharePoint sites!
 ```
 
-### Demo Modus (zonder Azure setup)
-Wil je eerst testen? De app heeft test endpoints:
-```
-GET http://localhost:3000/api/sharepoint/sites/test
-```
+**Note:** No `.env` file needed! All configuration is done via the browser UI.
 
-Dit geeft mock data voor demoing.
+---
 
-## Configuratie
+## 🔑 Azure App Registration Setup
 
-### Multi-User Deployment
-Huidige modus: gebruikers leveren zelf hun Azure App Registration gegevens via de web UI (tenantId, clientId, clientSecret). Geen server-side opslag op disk; alles per sessie in-memory. Dit vervangt het eerdere model waarbij één centrale App Registration en env vars nodig waren.
+Each user needs their own Azure App Registration. Here's how:
 
-**Sessiemodel:**
-- User vult config in → `configService` bewaart per `sessionId` in memory.
-- OAuth login gebruikt dynamische config (MSAL) → delegated token per gebruiker.
-- Bij server restart gaan sessies verloren (design keuze voor stateless veiligheid).
-
-**Backward compatibility:** Het eerdere `.env` model en `verifyAppRegistration.js` zijn gearchiveerd (zie `archive/`); functionaliteit blijft voorlopig bruikbaar maar wordt uitgefaseerd.
-
-### Geautomatiseerde Provisioning (optioneel)
-Tenant admin kan provisioning script draaien:
+### Option 1: Automated Script (Recommended)
 
 ```bash
 ./scripts/provision-app.sh
 ```
 
-Dit script:
-- Maakt (of update) een App Registratie met naam `SharePointManager`
-- Voegt redirect URI `http://localhost:3000/auth/callback` toe
-- Voegt Microsoft Graph application permissions toe: `Sites.Read.All`, `Sites.ReadWrite.All`, `Sites.Manage.All`, `User.Read`
-- Creëert een client secret en toont de waarde éénmalig
-- Print een blok in `.env` formaat voor direct gebruik
+This script:
+- Creates/updates an App Registration named `SharePointManager`
+- Configures redirect URI: `http://localhost:3000/auth/callback`
+- Adds required Microsoft Graph **delegated** permissions:
+  - `Sites.Read.All` - Read sites and versions
+  - `Sites.ReadWrite.All` - Delete versions
+  - `Sites.FullControl.All` - Update versioning settings (optional)
+- Generates a client secret
+- Outputs credentials ready to paste in the browser
 
-Daarna: geef admin consent in Azure Portal (of via `az ad app permission admin-consent --id <clientId>`).
+### Option 2: Manual Setup
 
-### Runtime Validatie
-In de huidige browser-configuratie valideert de server geen Azure env vars meer. Validatie gebeurt op het moment dat een gebruiker zijn config post (GUID format, presence). Eventuele legacy env variabelen worden genegeerd voor OAuth flows tenzij expliciet geactiveerd.
+1. Go to [Azure Portal → App Registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
+2. Click **New registration**
+3. Name: `Sharepointer` (or your choice)
+4. Supported account types: **Accounts in this organizational directory only**
+5. Redirect URI: **Web** → `https://yourdomain.com/auth/callback`
+6. Click **Register**
+7. Go to **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated permissions**
+8. Add: `Sites.Read.All`, `Sites.ReadWrite.All`, `Sites.FullControl.All`
+9. Click **Grant admin consent** (requires Global Admin)
+10. Go to **Certificates & secrets** → **New client secret** → Copy the value
+11. Copy **Application (client) ID** and **Directory (tenant) ID** from Overview
 
-### Production Deployment Opties
+---
 
-#### 1️⃣ Azure App Service (aanbevolen)
+## 📖 Usage
+
+### First Time Setup
+
+1. Open the app in your browser
+2. Click **Add Tenant** or the config modal will appear automatically
+3. Fill in your Azure App Registration details:
+   - **Tenant Name** - A friendly name (e.g., "My Company")
+   - **Tenant ID** - Your Azure Directory ID
+   - **Client ID** - Your App Registration Application ID
+   - **Client Secret** - The secret you generated
+4. Click **Save**
+5. Click **Login** to authenticate via Microsoft
+
+### Managing Sites
+
+1. After login, the app will scan all SharePoint sites
+2. View analytics: storage distribution, size categories, trends
+3. Select sites for cleanup
+4. Configure versions to keep (default: 50)
+5. Run **Dry Run** to preview changes
+6. Review results and click **Execute Cleanup** to delete old versions
+
+### Bulk Operations
+
+1. Select multiple sites using checkboxes
+2. Click **Bulk Cleanup** or **Bulk Versioning Settings**
+3. Configure options for all selected sites
+4. Monitor real-time progress via Server-Sent Events
+
+---
+
+## 🏗️ Architecture
+
+### Multi-User Session Model
+
+- **Browser-based config** - Users enter Azure credentials via web UI
+- **In-memory storage** - Config & tokens stored per `sessionId` in memory
+- **Delegated permissions** - Each user gets their own Graph API token
+- **Stateless** - Server restart clears all sessions (by design)
+- **No shared secrets** - Each user uses their own App Registration
+
+### Security Principles
+
+- **Least privilege** - Only delegated scopes, no application permissions
+- **Credential isolation** - No cross-session data leakage
+- **Secret redaction** - Client secrets never logged
+- **HTTPS enforced** - In production (via App Service/reverse proxy)
+- **No persistence** - Credentials never written to disk or database
+
+---
+
+## 🚀 Production Deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment guides:
+
+- Azure App Service (recommended)
+- Docker containers
+- VPS/dedicated server
+- Nginx reverse proxy
+- SSL/TLS configuration
+- Health monitoring
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Feel free to:
+
+- 🐛 Report bugs via [GitHub Issues](https://github.com/RafVandelaer/sharepoint-manager/issues)
+- 💡 Suggest features
+- 🔧 Submit pull requests
+- 📖 Improve documentation
+
+---
+
+## 📄 License
+
+This project is open source and available under the MIT License.
+
+---
+
+## 👤 Author
+
+**Raf Vandelaer**
+
+- GitHub: [@RafVandelaer](https://github.com/RafVandelaer)
+- Website: [sharepointer.be](https://sharepointer.be)
+
+---
+
+## 🙏 Acknowledgments
+
+- Built with [Node.js](https://nodejs.org/) & [Express](https://expressjs.com/)
+- UI powered by vanilla JavaScript & [Font Awesome](https://fontawesome.com/)
+- Charts by [Chart.js](https://www.chartjs.org/)
+- Authentication via [MSAL.js](https://github.com/AzureAD/microsoft-authentication-library-for-js)
+- Icons & design inspired by Microsoft Fluent
+
+---
+
+**⭐ Star this repo if you find it useful!**
 Set environment variables in **Configuration > Application settings**:
 ```
 TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx

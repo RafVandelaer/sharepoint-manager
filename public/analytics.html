@@ -1646,6 +1646,10 @@
             animation: modalSlideIn 0.2s 0.1s forwards;
         }
 
+        .modal-content.narrow {
+            max-width: 500px;
+        }
+
         [data-theme="dark"] .modal-content {
             background: var(--bg-secondary);
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
@@ -3371,12 +3375,82 @@
                 return;
             }
 
-            if (!confirm(t('cleanupWarning').replace('{count}', versionsToKeep))) {
-                return;
-            }
+            // Show custom confirm modal
+            const warningText = t('cleanupWarning').replace('{count}', versionsToKeep);
+            const lines = warningText.split('\\n\\n');
+            const title = lines[0].replace('⚠️ ', '').replace('WARNING: ', '').replace('WAARSCHUWING: ', '');
+            const message = lines.slice(1).join('\\n\\n');
+            
+            showConfirmModal(
+                title,
+                message,
+                () => {
+                    // On confirm
+                    startCleanupWithProgress(siteId, versionsToKeep, false);
+                }
+            );
+        };
 
-            // Start cleanup with progress modal
-            startCleanupWithProgress(siteId, versionsToKeep, false);
+        function showConfirmModal(title, message, onConfirm) {
+            const lang = getCurrentLanguage();
+            const modalContainer = document.getElementById('modalContainer');
+            
+            modalContainer.innerHTML = `
+                <div class="modal show">
+                    <div class="modal-content narrow">
+                        <div class="modal-header" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; border-radius: 12px 12px 0 0; padding: 24px;">
+                            <h2 style="color: white; margin: 0; font-size: 20px; display: flex; align-items: center; gap: 12px;">
+                                <i class="fas fa-exclamation-triangle" style="font-size: 24px;"></i>
+                                <span>${title}</span>
+                            </h2>
+                        </div>
+                        
+                        <div class="modal-body" style="padding: 28px 24px;">
+                            <p style="font-size: 15px; line-height: 1.7; margin: 0; color: var(--text-primary); white-space: pre-line;">${message}</p>
+                            
+                            <div style="display: flex; gap: 12px; margin-top: 28px;">
+                                <button onclick="closeConfirmModal()" class="action-btn-secondary" style="flex: 1; padding: 14px 20px; font-size: 15px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+                                    ${lang === 'nl' ? 'Annuleren' : 'Cancel'}
+                                </button>
+                                <button onclick="handleConfirm()" style="flex: 1; padding: 14px 20px; font-size: 15px; border-radius: 10px; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; border: none; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.35); transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                    <i class="fas fa-trash-alt"></i>
+                                    <span>${lang === 'nl' ? 'Ja, Verwijderen' : 'Yes, Delete'}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Store callback
+            window._confirmCallback = onConfirm;
+            
+            // Close on background click
+            const modal = modalContainer.querySelector('.modal');
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    closeConfirmModal();
+                }
+            });
+        }
+
+        window.handleConfirm = function() {
+            if (window._confirmCallback) {
+                window._confirmCallback();
+                window._confirmCallback = null;
+            }
+            closeConfirmModal();
+        };
+
+        window.closeConfirmModal = function() {
+            const modalContainer = document.getElementById('modalContainer');
+            const modal = modalContainer.querySelector('.modal');
+            if (modal) {
+                modal.classList.remove('show');
+                setTimeout(() => {
+                    modalContainer.innerHTML = '';
+                }, 200);
+            }
         };
 
         // Cleanup with SSE progress tracking
@@ -5190,6 +5264,38 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
         initTenantDropdown();
         initAuth();
     </script>
+
+    <!-- Footer -->
+    <footer style="margin-top: 60px; padding: 32px 20px; background: var(--bg-secondary); border-top: 1px solid var(--border-color); text-align: center;">
+        <div style="max-width: 1200px; margin: 0 auto;">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 12px;">
+                <i class="fas fa-folder" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-size: 24px;"></i>
+                <span style="font-size: 18px; font-weight: 700; color: var(--text-primary);">Sharepointer</span>
+            </div>
+            <p style="margin: 0 0 16px 0; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
+                Open source SharePoint site management & version cleanup tool
+            </p>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap;">
+                <a href="https://github.com/RafVandelaer/sharepoint-manager" target="_blank" rel="noopener" style="display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); text-decoration: none; font-size: 14px; transition: color 0.2s;">
+                    <i class="fab fa-github" style="font-size: 18px;"></i>
+                    <span>View on GitHub</span>
+                </a>
+                <a href="https://github.com/RafVandelaer" target="_blank" rel="noopener" style="display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); text-decoration: none; font-size: 14px; transition: color 0.2s;">
+                    <i class="fas fa-code" style="font-size: 16px;"></i>
+                    <span>By Raf Vandelaer</span>
+                </a>
+                <span style="color: var(--text-tertiary); font-size: 14px;">•</span>
+                <a href="/demo.html" style="display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); text-decoration: none; font-size: 14px; transition: color 0.2s;">
+                    <i class="fas fa-flask" style="font-size: 16px;"></i>
+                    <span>Try Demo</span>
+                </a>
+            </div>
+            <p style="margin: 16px 0 0 0; font-size: 12px; color: var(--text-tertiary);">
+                <i class="fas fa-shield-alt" style="margin-right: 4px;"></i>
+                No sensitive data is stored on sharepointer.be • All config & tokens are ephemeral
+            </p>
+        </div>
+    </footer>
 
     <!-- Modal Container for Login Modal -->
     <div id="modalContainer"></div>
