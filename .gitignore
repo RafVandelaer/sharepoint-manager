@@ -5,6 +5,9 @@
 *.key
 *.crt
 
+# GitHub (Copilot instructions contain internal/private info)
+.github/
+
 # macOS
 .DS_Store
 .AppleDouble
