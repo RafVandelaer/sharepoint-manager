@@ -235,16 +235,22 @@ class App {
   renderSites() {
     this.hideAllStates();
     this.sitesGrid.classList.remove('hidden');
-    this.sitesGrid.innerHTML = '';
+    this.sitesGrid.textContent = '';
 
     if (this.filteredSites.length === 0) {
-      this.sitesGrid.innerHTML = `
-        <div class="empty-state" style="grid-column: 1 / -1;">
-          <i class="fas fa-search"></i>
-          <h3>${t('noSearchResults')}</h3>
-          <p>${t('tryDifferentSearch')}</p>
-        </div>
-      `;
+      const emptyState = document.createElement('div');
+      emptyState.className = 'empty-state';
+      emptyState.style.gridColumn = '1 / -1';
+      const icon = document.createElement('i');
+      icon.className = 'fas fa-search';
+      const title = document.createElement('h3');
+      title.textContent = t('noSearchResults');
+      const desc = document.createElement('p');
+      desc.textContent = t('tryDifferentSearch');
+      emptyState.appendChild(icon);
+      emptyState.appendChild(title);
+      emptyState.appendChild(desc);
+      this.sitesGrid.appendChild(emptyState);
       return;
     }
 
@@ -308,20 +314,20 @@ class App {
     
     // Update cleanup button
     this.bulkCleanupBtn.disabled = !hasSelection;
-    if (hasSelection) {
-      this.bulkCleanupBtn.innerHTML = `<i class="fas fa-broom"></i> ${t('bulkCleanup')} (${this.selectedSites.size})`;
-    } else {
-      this.bulkCleanupBtn.innerHTML = `<i class="fas fa-broom"></i> ${t('bulkCleanup')}`;
-    }
+    this.bulkCleanupBtn.textContent = '';
+    const cleanupIcon = document.createElement('i');
+    cleanupIcon.className = 'fas fa-broom';
+    this.bulkCleanupBtn.appendChild(cleanupIcon);
+    this.bulkCleanupBtn.appendChild(document.createTextNode(' ' + t('bulkCleanup') + (hasSelection ? ` (${this.selectedSites.size})` : '')));
 
     // Update versioning button
     if (this.bulkVersioningBtn) {
       this.bulkVersioningBtn.disabled = !hasSelection;
-      if (hasSelection) {
-        this.bulkVersioningBtn.innerHTML = `<i class="fas fa-layer-group"></i> Bulk Versioning (${this.selectedSites.size})`;
-      } else {
-        this.bulkVersioningBtn.innerHTML = `<i class="fas fa-layer-group"></i> Bulk Versioning`;
-      }
+      this.bulkVersioningBtn.textContent = '';
+      const versionIcon = document.createElement('i');
+      versionIcon.className = 'fas fa-layer-group';
+      this.bulkVersioningBtn.appendChild(versionIcon);
+      this.bulkVersioningBtn.appendChild(document.createTextNode(' Bulk Versioning' + (hasSelection ? ` (${this.selectedSites.size})` : '')));
     }
   }
 

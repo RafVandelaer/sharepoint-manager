@@ -761,15 +761,26 @@
                 }
                 
                 alertsPanel.style.display = 'block';
-                alertsList.innerHTML = alerts.map(alert => `
-                    <div class="alert-item severity-${alert.severity.toLowerCase()}">
-                        <div class="alert-title">
-                            <i class="fas fa-exclamation-${alert.severity === 'HIGH' ? 'circle' : 'triangle'}"></i>
-                            ${alert.type.replace(/_/g, ' ')}
-                        </div>
-                        <div class="alert-message">${alert.message}</div>
-                    </div>
-                `).join('');
+                alertsList.innerHTML = '';
+                alerts.forEach(alert => {
+                    const div = document.createElement('div');
+                    div.className = `alert-item severity-${alert.severity.toLowerCase()}`;
+                    
+                    const titleDiv = document.createElement('div');
+                    titleDiv.className = 'alert-title';
+                    const icon = document.createElement('i');
+                    icon.className = `fas fa-exclamation-${alert.severity === 'HIGH' ? 'circle' : 'triangle'}`;
+                    titleDiv.appendChild(icon);
+                    titleDiv.appendChild(document.createTextNode(' ' + alert.type.replace(/_/g, ' ')));
+                    
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = 'alert-message';
+                    messageDiv.textContent = alert.message;
+                    
+                    div.appendChild(titleDiv);
+                    div.appendChild(messageDiv);
+                    alertsList.appendChild(div);
+                });
             } catch (error) {
                 console.error('Error loading alerts:', error);
             }
@@ -883,7 +894,14 @@
         // Load audit trail
         async function loadAuditTrail() {
             const auditContent = document.getElementById('auditContent');
-            auditContent.innerHTML = '<div class="loading"><div class="spinner"></div>Loading audit trail...</div>';
+            auditContent.textContent = '';
+            const loading = document.createElement('div');
+            loading.className = 'loading';
+            const spinner = document.createElement('div');
+            spinner.className = 'spinner';
+            loading.appendChild(spinner);
+            loading.appendChild(document.createTextNode('Loading audit trail...'));
+            auditContent.appendChild(loading);
 
             try {
                 const action = document.getElementById('actionFilter').value;
@@ -904,40 +922,74 @@
                 const { entries, total, offset } = await response.json();
                 
                 if (entries.length === 0) {
-                    auditContent.innerHTML = `
-                        <div class="empty-state">
-                            <i class="fas fa-inbox"></i>
-                            <h3>No audit entries found</h3>
-                            <p>Try adjusting your filters</p>
-                        </div>
-                    `;
+                    auditContent.textContent = '';
+                    const emptyState = document.createElement('div');
+                    emptyState.className = 'empty-state';
+                    const icon = document.createElement('i');
+                    icon.className = 'fas fa-inbox';
+                    const title = document.createElement('h3');
+                    title.textContent = 'No audit entries found';
+                    const desc = document.createElement('p');
+                    desc.textContent = 'Try adjusting your filters';
+                    emptyState.appendChild(icon);
+                    emptyState.appendChild(title);
+                    emptyState.appendChild(desc);
+                    auditContent.appendChild(emptyState);
                     return;
                 }
                 
-                auditContent.innerHTML = `
-                    <table class="audit-table">
-                        <thead>
-                            <tr>
-                                <th>Timestamp</th>
-                                <th>Action</th>
-                                <th>User Hash</th>
-                                <th>Tenant Hash</th>
-                                <th>Details</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${entries.map(entry => `
-                                <tr>
-                                    <td>${new Date(entry.timestamp).toLocaleString()}</td>
-                                    <td><span class="action-badge ${getActionClass(entry.action)}">${entry.action}</span></td>
-                                    <td><span class="user-hash">${entry.userHash}</span></td>
-                                    <td><span class="user-hash">${entry.tenantHash}</span></td>
-                                    <td>${JSON.stringify(entry.metadata || {}).substring(0, 100)}...</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                `;
+                // Display audit entries
+                auditContent.textContent = '';
+                const table = document.createElement('table');
+                table.className = 'audit-table';
+                
+                const thead = document.createElement('thead');
+                const headerRow = document.createElement('tr');
+                ['Timestamp', 'Action', 'User Hash', 'Tenant Hash', 'Details'].forEach(header => {
+                    const th = document.createElement('th');
+                    th.textContent = header;
+                    headerRow.appendChild(th);
+                });
+                thead.appendChild(headerRow);
+                table.appendChild(thead);
+                
+                const tbody = document.createElement('tbody');
+                entries.forEach(entry => {
+                    const row = document.createElement('tr');
+                    
+                    const timestampCell = document.createElement('td');
+                    timestampCell.textContent = new Date(entry.timestamp).toLocaleString();
+                    row.appendChild(timestampCell);
+                    
+                    const actionCell = document.createElement('td');
+                    const actionBadge = document.createElement('span');
+                    actionBadge.className = `action-badge ${getActionClass(entry.action)}`;
+                    actionBadge.textContent = entry.action;
+                    actionCell.appendChild(actionBadge);
+                    row.appendChild(actionCell);
+                    
+                    const userCell = document.createElement('td');
+                    const userHash = document.createElement('span');
+                    userHash.className = 'user-hash';
+                    userHash.textContent = entry.userHash;
+                    userCell.appendChild(userHash);
+                    row.appendChild(userCell);
+                    
+                    const tenantCell = document.createElement('td');
+                    const tenantHash = document.createElement('span');
+                    tenantHash.className = 'user-hash';
+                    tenantHash.textContent = entry.tenantHash;
+                    tenantCell.appendChild(tenantHash);
+                    row.appendChild(tenantCell);
+                    
+                    const metadataCell = document.createElement('td');
+                    metadataCell.textContent = JSON.stringify(entry.metadata || {}).substring(0, 100) + '...';
+                    row.appendChild(metadataCell);
+                    
+                    tbody.appendChild(row);
+                });
+                table.appendChild(tbody);
+                auditContent.appendChild(table);
                 
                 // Update pagination
                 document.getElementById('pageInfo').textContent = `Page ${currentPage + 1} of ${Math.ceil(total / pageSize)}`;
@@ -945,7 +997,16 @@
                 document.getElementById('nextBtn').disabled = offset + entries.length >= total;
             } catch (error) {
                 console.error('Error loading audit trail:', error);
-                auditContent.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-circle"></i><h3>Error loading audit trail</h3></div>';
+                auditContent.textContent = '';
+                const errorState = document.createElement('div');
+                errorState.className = 'empty-state';
+                const icon = document.createElement('i');
+                icon.className = 'fas fa-exclamation-circle';
+                const title = document.createElement('h3');
+                title.textContent = 'Error loading audit trail';
+                errorState.appendChild(icon);
+                errorState.appendChild(title);
+                auditContent.appendChild(errorState);
             }
         }
 

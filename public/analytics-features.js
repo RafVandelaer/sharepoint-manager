@@ -1,5 +1,16 @@
 // ===== DARK MODE & NEW FEATURES JAVASCRIPT =====
 
+// Security: HTML escaping utility to prevent XSS attacks
+function escapeHtml(unsafe) {
+    if (typeof unsafe !== 'string') return '';
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 // Global state for new features
 let failedSites = [];
 let etaTracker = {
@@ -258,12 +269,24 @@ function updateFailedSitesList() {
     document.getElementById('retryTitle').textContent = `${failedSites.length} site${failedSites.length > 1 ? 's' : ''} failed`;
     
     const list = document.getElementById('failedSitesList');
-    list.innerHTML = failedSites.map(site => `
-        <div class="failed-site-item">
-            <span class="failed-site-name">${site.name}</span>
-            <span class="failed-site-error" title="${site.error}">${site.error}</span>
-        </div>
-    `).join('');
+    list.innerHTML = '';
+    failedSites.forEach(site => {
+        const div = document.createElement('div');
+        div.className = 'failed-site-item';
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'failed-site-name';
+        nameSpan.textContent = site.name;
+        
+        const errorSpan = document.createElement('span');
+        errorSpan.className = 'failed-site-error';
+        errorSpan.textContent = site.error;
+        errorSpan.title = site.error;
+        
+        div.appendChild(nameSpan);
+        div.appendChild(errorSpan);
+        list.appendChild(div);
+    });
 }
 
 async function retryFailedSites() {

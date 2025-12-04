@@ -18,8 +18,14 @@ class AuditLogger {
     this.archiveDir = path.join(this.logsDir, 'archive');
     this.ensureDirectories();
     
-    // Audit salt for consistent hashing (from env or default)
-    this.auditSalt = process.env.AUDIT_SALT || 'sharepoint-manager-audit-v1-2025';
+    // Audit salt for privacy protection (required in .env)
+    this.auditSalt = process.env.AUDIT_SALT;
+    if (!this.auditSalt) {
+      console.error('🚨 SECURITY ERROR: AUDIT_SALT not set in .env');
+      console.error('Generate one with: openssl rand -hex 32');
+      console.error('AUDIT_SALT is required for GDPR-compliant user anonymization');
+      throw new Error('AUDIT_SALT environment variable required for privacy');
+    }
   }
 
   ensureDirectories() {

@@ -2360,6 +2360,48 @@
             };
         }
 
+        // Security: HTML escaping to prevent XSS
+        function escapeHtml(unsafe) {
+            if (typeof unsafe !== 'string') return '';
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Session expiry monitoring (8-hour timeout)
+        const SESSION_TIMEOUT = 8 * 60 * 60 * 1000; // 8 hours in milliseconds
+        const WARNING_TIME = 5 * 60 * 1000; // Warn 5 minutes before expiry
+        
+        function checkSessionExpiry() {
+            const loginTime = localStorage.getItem('loginTime');
+            if (!loginTime) return;
+            
+            const elapsed = Date.now() - parseInt(loginTime);
+            const remaining = SESSION_TIMEOUT - elapsed;
+            
+            if (remaining <= 0) {
+                // Session expired - auto logout
+                console.log('Session expired - logging out');
+                localStorage.removeItem('loginTime');
+                localStorage.removeItem('msal_sessionId');
+                alert('Your session has expired. Please log in again.');
+                window.location.href = '/';
+            } else if (remaining <= WARNING_TIME && !sessionStorage.getItem('warningShown')) {
+                // Show warning once
+                sessionStorage.setItem('warningShown', 'true');
+                const minutes = Math.ceil(remaining / 60000);
+                alert(`Your session will expire in ${minutes} minutes. Please save your work.`);
+            }
+        }
+        
+        // Check session every 5 minutes
+        setInterval(checkSessionExpiry, 5 * 60 * 1000);
+        // Check immediately on load
+        checkSessionExpiry();
+
         let storageChart = null;
         let categoriesChart = null;
         let trendChart = null;
@@ -2379,7 +2421,7 @@
             loadingContainer.style.display = 'block';
             analyticsContent.classList.add('hidden');
             analyticsContent.style.display = 'none';
-            errorContainer.innerHTML = '';
+            errorContainer.textContent = '';
 
             // Enhance loading indicator (animate status + elapsed time)
             let startTime = Date.now();
@@ -2584,31 +2626,77 @@
                     
                     if (needsConfig) {
                         // Redirect to home page to set up config
-                        errorContainer.innerHTML = `
-                            <div class="error-message">
-                                <strong><i class="fas fa-cog"></i> Configuration Required</strong>
-                                <p>Your Azure App Registration credentials are not configured or have expired.</p>
-                                <p>You need to set up your configuration again.</p>
-                                <button onclick="window.location.href='/'" style="margin-top: 12px; padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">
-                                    Go to Setup
-                                </button>
-                            </div>
-                        `;
+                        errorContainer.textContent = '';
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'error-message';
+                        
+                        const header = document.createElement('strong');
+                        const icon = document.createElement('i');
+                        icon.className = 'fas fa-cog';
+                        header.appendChild(icon);
+                        header.appendChild(document.createTextNode(' Configuration Required'));
+                        
+                        const p1 = document.createElement('p');
+                        p1.textContent = 'Your Azure App Registration credentials are not configured or have expired.';
+                        
+                        const p2 = document.createElement('p');
+                        p2.textContent = 'You need to set up your configuration again.';
+                        
+                        const button = document.createElement('button');
+                        button.textContent = 'Go to Setup';
+                        button.style.marginTop = '12px';
+                        button.style.padding = '10px 20px';
+                        button.style.background = '#667eea';
+                        button.style.color = 'white';
+                        button.style.border = 'none';
+                        button.style.borderRadius = '6px';
+                        button.style.cursor = 'pointer';
+                        button.onclick = () => window.location.href = '/';
+                        
+                        errorDiv.appendChild(header);
+                        errorDiv.appendChild(p1);
+                        errorDiv.appendChild(p2);
+                        errorDiv.appendChild(button);
+                        errorContainer.appendChild(errorDiv);
                         return;
                     }
                     
                     const isAuthError = error.status === 401 || error.message.includes('Authentication') || error.message.includes('Unauthorized');
-                    errorContainer.innerHTML = `
-                        <div class="error-message">
-                            <strong>Error loading analytics:</strong> ${error.message}
-                            <br><br>
-                            ${isAuthError ? 
-                                '<span style="color: #c0392b;">Je bent niet ingelogd of je sessie is verlopen. Klik op "Inloggen" rechtsboven.</span><br>' : 
-                                '<span style="color: #c0392b;">Er is een fout opgetreden bij het laden van de data.</span><br>'
-                            }
-                            ${isAuthError ? '<button onclick="window.location.reload()" style="margin-top: 12px; padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">Pagina herladen</button>' : ''}
-                        </div>
-                    `;
+                    
+                    errorContainer.textContent = '';
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'error-message';
+                    
+                    const header = document.createElement('strong');
+                    header.textContent = 'Error loading analytics: ' + error.message;
+                    
+                    errorDiv.appendChild(header);
+                    errorDiv.appendChild(document.createElement('br'));
+                    errorDiv.appendChild(document.createElement('br'));
+                    
+                    const messageSpan = document.createElement('span');
+                    messageSpan.style.color = '#c0392b';
+                    messageSpan.textContent = isAuthError 
+                        ? 'Je bent niet ingelogd of je sessie is verlopen. Klik op "Inloggen" rechtsboven.'
+                        : 'Er is een fout opgetreden bij het laden van de data.';
+                    errorDiv.appendChild(messageSpan);
+                    errorDiv.appendChild(document.createElement('br'));
+                    
+                    if (isAuthError) {
+                        const reloadBtn = document.createElement('button');
+                        reloadBtn.textContent = 'Pagina herladen';
+                        reloadBtn.style.marginTop = '12px';
+                        reloadBtn.style.padding = '10px 20px';
+                        reloadBtn.style.background = '#667eea';
+                        reloadBtn.style.color = 'white';
+                        reloadBtn.style.border = 'none';
+                        reloadBtn.style.borderRadius = '6px';
+                        reloadBtn.style.cursor = 'pointer';
+                        reloadBtn.onclick = () => window.location.reload();
+                        errorDiv.appendChild(reloadBtn);
+                    }
+                    
+                    errorContainer.appendChild(errorDiv);
                 }
             }
         };
@@ -3075,7 +3163,11 @@
 
             const searchValue = document.getElementById('siteSearchInput')?.value?.toLowerCase() || '';
 
-            tbody.innerHTML = sites.map((site, index) => {
+            // Clear table body
+            tbody.textContent = '';
+            
+            // Build rows safely using DOM methods
+            sites.forEach((site, index) => {
                 const percentage = (site.storage.used / maxStorage * 100).toFixed(1);
                 let categoryBadge = 'size-small';
                 let categoryText = 'Small';
@@ -3091,115 +3183,297 @@
                 const lastModified = (site.lastModifiedDateTime || site.createdDateTime) ? 
                     new Date(site.lastModifiedDateTime || site.createdDateTime).toLocaleDateString() : 'N/A';
                 const isExpanded = expandedSiteId === site.id;
-
                 const isSelected = selectedSites.has(site.id);
-                // Search highlight logic
-                const highlight = (text) => {
-                    if (!searchValue) return text;
-                    const lower = text.toLowerCase();
-                    let result = '';
-                    let i = 0;
-                    while (i < text.length) {
-                        if (lower.startsWith(searchValue, i)) {
-                            result += `<span class="search-highlight">${text.substr(i, searchValue.length)}</span>`;
-                            i += searchValue.length;
+                
+                // Create main row
+                const mainRow = document.createElement('tr');
+                mainRow.className = `site-row ${isExpanded ? 'active' : ''} ${isSelected ? 'selected' : ''}`;
+                mainRow.onclick = () => toggleSiteDetails(site.id, index);
+                
+                // Checkbox cell
+                const checkboxCell = document.createElement('td');
+                checkboxCell.onclick = (e) => e.stopPropagation();
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'site-checkbox';
+                checkbox.dataset.siteId = site.id;
+                checkbox.checked = isSelected;
+                checkbox.onchange = (e) => toggleSiteSelection(site.id, e);
+                checkboxCell.appendChild(checkbox);
+                mainRow.appendChild(checkboxCell);
+                
+                // Name cell with search highlighting
+                const nameCell = document.createElement('td');
+                const nameBold = document.createElement('strong');
+                if (searchValue && site.name.toLowerCase().includes(searchValue)) {
+                    // Safe search highlighting
+                    const parts = site.name.split(new RegExp(`(${searchValue})`, 'i'));
+                    parts.forEach(part => {
+                        if (part.toLowerCase() === searchValue) {
+                            const highlight = document.createElement('span');
+                            highlight.className = 'search-highlight';
+                            highlight.textContent = part;
+                            nameBold.appendChild(highlight);
                         } else {
-                            result += text[i];
-                            i++;
+                            nameBold.appendChild(document.createTextNode(part));
                         }
-                    }
-                    return result;
-                };
-                const displayName = highlight(site.name);
-                const displayUrl = highlight(site.webUrl);
-
-                return `
-                    <tr class="site-row ${isExpanded ? 'active' : ''} ${isSelected ? 'selected' : ''}" onclick="toggleSiteDetails('${site.id}', ${index})">
-                        <td onclick="event.stopPropagation()">
-                            <input type="checkbox" class="site-checkbox" data-site-id="${site.id}" 
-                                onchange="toggleSiteSelection('${site.id}', event)" ${isSelected ? 'checked' : ''}>
-                        </td>
-                        <td>
-                            <strong>${displayName}</strong>
-                            <div class="site-url-text">${displayUrl}</div>
-                        </td>
-                        <td><strong>${site.storage.usedGB} GB</strong></td>
-                        <td>
-                            <div class="size-bar-wrapper" aria-label="${site.storage.usedGB} GB (${percentage}% of largest)">
-                                <div class="size-bar">
-                                <div class="size-bar-fill" style="width: ${percentage}%"></div>
-                                </div>
-                                <div class="size-tooltip">${site.storage.usedGB} GB • ${percentage}%</div>
-                            </div>
-                            <div class="size-percentage">${percentage}% of largest</div>
-                        </td>
-                        <td><span class="size-badge ${categoryBadge}">${categoryText}</span></td>
-                        <td>${lastModified}</td>
-                    </tr>
-                    <tr class="site-details-row ${isExpanded ? 'expanded' : ''}" id="details-${site.id}">
-                        <td colspan="6">
-                            <div class="site-details-panel">
-                                <div class="details-grid">
-                                    <div class="detail-card">
-                                        <div class="detail-label">${t('siteName')}</div>
-                                        <div class="detail-value">${site.name}</div>
-                                    </div>
-                                    <div class="detail-card">
-                                        <div class="detail-label">${t('storageUsed')}</div>
-                                        <div class="detail-value">${site.storage.usedGB} GB</div>
-                                    </div>
-                                    <div class="detail-card">
-                                        <div class="detail-label">${t('storagePercentage')}</div>
-                                        <div class="detail-value">${site.storage.percentage || site.storage.percentUsed || '—'}%</div>
-                                    </div>
-                                    <div class="detail-card">
-                                        <div class="detail-label">${t('lastModified')}</div>
-                                        <div class="detail-value">${lastModified}</div>
-                                    </div>
-                                </div>
-
-                                <div class="action-section">
-                                    <h4 class="section-title">${t('siteManagement')}</h4>
-                                    
-                                    <div class="section-group">
-                                        <h5 class="subsection-title">${t('versionCleanup')}</h5>
-                                        <div class="input-group">
-                                            <label for="versions-${site.id}">${t('versionsToKeep')}</label>
-                                            <div class="version-input-wrapper">
-                                                <input type="number" id="versions-${site.id}" min="1" max="500" value="50" oninput="checkVersionWarning('${site.id}')">
-                                                <div class="version-warning" id="warning-${site.id}">
-                                                    <i class="fas fa-exclamation-triangle"></i>
-                                                    <span id="warning-text-${site.id}"></span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="action-buttons">
-                                            <button class="action-btn action-btn-secondary" onclick="runDryRun('${site.id}', ${index}); event.stopPropagation();">
-                                                <i class="fas fa-eye"></i> ${t('dryRun')}
-                                            </button>
-                                            <button class="action-btn action-btn-danger" onclick="runCleanup('${site.id}', ${index}); event.stopPropagation();">
-                                                <i class="fas fa-trash-alt"></i> ${t('executeCleanup')}
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <h5 class="subsection-title">${t('versionSettings')}</h5>
-                                        <div class="action-buttons">
-                                            <button class="action-btn action-btn-primary" onclick="openVersionSettings('${site.id}'); event.stopPropagation();">
-                                                <i class="fas fa-cog"></i> ${t('manageVersioning')}
-                                            </button>
-                                            <button class="action-btn action-btn-secondary" onclick="window.open('${site.webUrl}', '_blank'); event.stopPropagation();">
-                                                <i class="fas fa-external-link-alt"></i> ${t('openInSharePoint')}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
+                    });
+                } else {
+                    nameBold.textContent = site.name;
+                }
+                nameCell.appendChild(nameBold);
+                
+                const urlDiv = document.createElement('div');
+                urlDiv.className = 'site-url-text';
+                if (searchValue && site.webUrl.toLowerCase().includes(searchValue)) {
+                    const parts = site.webUrl.split(new RegExp(`(${searchValue})`, 'i'));
+                    parts.forEach(part => {
+                        if (part.toLowerCase() === searchValue) {
+                            const highlight = document.createElement('span');
+                            highlight.className = 'search-highlight';
+                            highlight.textContent = part;
+                            urlDiv.appendChild(highlight);
+                        } else {
+                            urlDiv.appendChild(document.createTextNode(part));
+                        }
+                    });
+                } else {
+                    urlDiv.textContent = site.webUrl;
+                }
+                nameCell.appendChild(urlDiv);
+                mainRow.appendChild(nameCell);
+                
+                // Storage cell
+                const storageCell = document.createElement('td');
+                const storageBold = document.createElement('strong');
+                storageBold.textContent = `${site.storage.usedGB} GB`;
+                storageCell.appendChild(storageBold);
+                mainRow.appendChild(storageCell);
+                
+                // Size bar cell
+                const sizeBarCell = document.createElement('td');
+                const sizeBarWrapper = document.createElement('div');
+                sizeBarWrapper.className = 'size-bar-wrapper';
+                sizeBarWrapper.setAttribute('aria-label', `${site.storage.usedGB} GB (${percentage}% of largest)`);
+                
+                const sizeBar = document.createElement('div');
+                sizeBar.className = 'size-bar';
+                const sizeBarFill = document.createElement('div');
+                sizeBarFill.className = 'size-bar-fill';
+                sizeBarFill.style.width = `${percentage}%`;
+                sizeBar.appendChild(sizeBarFill);
+                sizeBarWrapper.appendChild(sizeBar);
+                
+                const sizeTooltip = document.createElement('div');
+                sizeTooltip.className = 'size-tooltip';
+                sizeTooltip.textContent = `${site.storage.usedGB} GB • ${percentage}%`;
+                sizeBarWrapper.appendChild(sizeTooltip);
+                
+                const sizePercentage = document.createElement('div');
+                sizePercentage.className = 'size-percentage';
+                sizePercentage.textContent = `${percentage}% of largest`;
+                
+                sizeBarCell.appendChild(sizeBarWrapper);
+                sizeBarCell.appendChild(sizePercentage);
+                mainRow.appendChild(sizeBarCell);
+                
+                // Category cell
+                const categoryCell = document.createElement('td');
+                const categorySpan = document.createElement('span');
+                categorySpan.className = `size-badge ${categoryBadge}`;
+                categorySpan.textContent = categoryText;
+                categoryCell.appendChild(categorySpan);
+                mainRow.appendChild(categoryCell);
+                
+                // Last modified cell
+                const modifiedCell = document.createElement('td');
+                modifiedCell.textContent = lastModified;
+                mainRow.appendChild(modifiedCell);
+                
+                tbody.appendChild(mainRow);
+                
+                // Create details row
+                const detailsRow = document.createElement('tr');
+                detailsRow.className = `site-details-row ${isExpanded ? 'expanded' : ''}`;
+                detailsRow.id = `details-${site.id}`;
+                
+                const detailsCell = document.createElement('td');
+                detailsCell.colSpan = 6;
+                
+                const detailsPanel = document.createElement('div');
+                detailsPanel.className = 'site-details-panel';
+                
+                // Details grid
+                const detailsGrid = document.createElement('div');
+                detailsGrid.className = 'details-grid';
+                
+                // Site name detail
+                const nameCard = document.createElement('div');
+                nameCard.className = 'detail-card';
+                const nameLabel = document.createElement('div');
+                nameLabel.className = 'detail-label';
+                nameLabel.textContent = t('siteName');
+                const nameValue = document.createElement('div');
+                nameValue.className = 'detail-value';
+                nameValue.textContent = site.name;
+                nameCard.appendChild(nameLabel);
+                nameCard.appendChild(nameValue);
+                detailsGrid.appendChild(nameCard);
+                
+                // Storage detail
+                const storageCard = document.createElement('div');
+                storageCard.className = 'detail-card';
+                const storageLabel = document.createElement('div');
+                storageLabel.className = 'detail-label';
+                storageLabel.textContent = t('storageUsed');
+                const storageValue = document.createElement('div');
+                storageValue.className = 'detail-value';
+                storageValue.textContent = `${site.storage.usedGB} GB`;
+                storageCard.appendChild(storageLabel);
+                storageCard.appendChild(storageValue);
+                detailsGrid.appendChild(storageCard);
+                
+                // Percentage detail
+                const percentCard = document.createElement('div');
+                percentCard.className = 'detail-card';
+                const percentLabel = document.createElement('div');
+                percentLabel.className = 'detail-label';
+                percentLabel.textContent = t('storagePercentage');
+                const percentValue = document.createElement('div');
+                percentValue.className = 'detail-value';
+                percentValue.textContent = `${site.storage.percentage || site.storage.percentUsed || '—'}%`;
+                percentCard.appendChild(percentLabel);
+                percentCard.appendChild(percentValue);
+                detailsGrid.appendChild(percentCard);
+                
+                // Last modified detail
+                const modCard = document.createElement('div');
+                modCard.className = 'detail-card';
+                const modLabel = document.createElement('div');
+                modLabel.className = 'detail-label';
+                modLabel.textContent = t('lastModified');
+                const modValue = document.createElement('div');
+                modValue.className = 'detail-value';
+                modValue.textContent = lastModified;
+                modCard.appendChild(modLabel);
+                modCard.appendChild(modValue);
+                detailsGrid.appendChild(modCard);
+                
+                detailsPanel.appendChild(detailsGrid);
+                
+                // Action section
+                const actionSection = document.createElement('div');
+                actionSection.className = 'action-section';
+                
+                const sectionTitle = document.createElement('h4');
+                sectionTitle.className = 'section-title';
+                sectionTitle.textContent = t('siteManagement');
+                actionSection.appendChild(sectionTitle);
+                
+                // Version cleanup section
+                const sectionGroup = document.createElement('div');
+                sectionGroup.className = 'section-group';
+                
+                const subsectionTitle = document.createElement('h5');
+                subsectionTitle.className = 'subsection-title';
+                subsectionTitle.textContent = t('versionCleanup');
+                sectionGroup.appendChild(subsectionTitle);
+                
+                const inputGroup = document.createElement('div');
+                inputGroup.className = 'input-group';
+                
+                const label = document.createElement('label');
+                label.htmlFor = `versions-${site.id}`;
+                label.textContent = t('versionsToKeep');
+                inputGroup.appendChild(label);
+                
+                const versionInputWrapper = document.createElement('div');
+                versionInputWrapper.className = 'version-input-wrapper';
+                
+                const versionInput = document.createElement('input');
+                versionInput.type = 'number';
+                versionInput.id = `versions-${site.id}`;
+                versionInput.min = '1';
+                versionInput.max = '500';
+                versionInput.value = '50';
+                versionInput.oninput = () => checkVersionWarning(site.id);
+                versionInputWrapper.appendChild(versionInput);
+                
+                const versionWarning = document.createElement('div');
+                versionWarning.className = 'version-warning';
+                versionWarning.id = `warning-${site.id}`;
+                const warningIcon = document.createElement('i');
+                warningIcon.className = 'fas fa-exclamation-triangle';
+                versionWarning.appendChild(warningIcon);
+                const warningText = document.createElement('span');
+                warningText.id = `warning-text-${site.id}`;
+                versionWarning.appendChild(warningText);
+                versionInputWrapper.appendChild(versionWarning);
+                
+                inputGroup.appendChild(versionInputWrapper);
+                sectionGroup.appendChild(inputGroup);
+                
+                const actionButtons = document.createElement('div');
+                actionButtons.className = 'action-buttons';
+                
+                const dryRunBtn = document.createElement('button');
+                dryRunBtn.className = 'action-btn action-btn-secondary';
+                dryRunBtn.onclick = (e) => { runDryRun(site.id, index); e.stopPropagation(); };
+                const dryRunIcon = document.createElement('i');
+                dryRunIcon.className = 'fas fa-eye';
+                dryRunBtn.appendChild(dryRunIcon);
+                dryRunBtn.appendChild(document.createTextNode(' ' + t('dryRun')));
+                actionButtons.appendChild(dryRunBtn);
+                
+                const cleanupBtn = document.createElement('button');
+                cleanupBtn.className = 'action-btn action-btn-danger';
+                cleanupBtn.onclick = (e) => { runCleanup(site.id, index); e.stopPropagation(); };
+                const cleanupIcon = document.createElement('i');
+                cleanupIcon.className = 'fas fa-trash-alt';
+                cleanupBtn.appendChild(cleanupIcon);
+                cleanupBtn.appendChild(document.createTextNode(' ' + t('executeCleanup')));
+                actionButtons.appendChild(cleanupBtn);
+                
+                sectionGroup.appendChild(actionButtons);
+                actionSection.appendChild(sectionGroup);
+                
+                // Version settings section
+                const versionSettingsDiv = document.createElement('div');
+                const versionSubsectionTitle = document.createElement('h5');
+                versionSubsectionTitle.className = 'subsection-title';
+                versionSubsectionTitle.textContent = t('versionSettings');
+                versionSettingsDiv.appendChild(versionSubsectionTitle);
+                
+                const versionActionButtons = document.createElement('div');
+                versionActionButtons.className = 'action-buttons';
+                
+                const versionSettingsBtn = document.createElement('button');
+                versionSettingsBtn.className = 'action-btn action-btn-primary';
+                versionSettingsBtn.onclick = (e) => { openVersionSettings(site.id); e.stopPropagation(); };
+                const versionSettingsIcon = document.createElement('i');
+                versionSettingsIcon.className = 'fas fa-cog';
+                versionSettingsBtn.appendChild(versionSettingsIcon);
+                versionSettingsBtn.appendChild(document.createTextNode(' ' + t('manageVersioning')));
+                versionActionButtons.appendChild(versionSettingsBtn);
+                
+                const openSPBtn = document.createElement('button');
+                openSPBtn.className = 'action-btn action-btn-secondary';
+                openSPBtn.onclick = (e) => { window.open(site.webUrl, '_blank'); e.stopPropagation(); };
+                const openSPIcon = document.createElement('i');
+                openSPIcon.className = 'fas fa-external-link-alt';
+                openSPBtn.appendChild(openSPIcon);
+                openSPBtn.appendChild(document.createTextNode(' ' + t('openInSharePoint')));
+                versionActionButtons.appendChild(openSPBtn);
+                
+                versionSettingsDiv.appendChild(versionActionButtons);
+                actionSection.appendChild(versionSettingsDiv);
+                
+                detailsPanel.appendChild(actionSection);
+                detailsCell.appendChild(detailsPanel);
+                detailsRow.appendChild(detailsCell);
+                
+                tbody.appendChild(detailsRow);
+            });
             
             // Update bulk controls after table render
             if (typeof updateBulkControls === 'function') {
@@ -3812,7 +4086,11 @@
             // Update counter with proper HTML structure
             const counterElement = document.getElementById('selectionCounter');
             if (counterElement) {
-                counterElement.innerHTML = `<span>${count}</span> ${count === 1 ? 'site' : 'sites'} selected`;
+                counterElement.textContent = '';
+                const countSpan = document.createElement('span');
+                countSpan.textContent = count.toString();
+                counterElement.appendChild(countSpan);
+                counterElement.appendChild(document.createTextNode(` ${count === 1 ? 'site' : 'sites'} selected`));
             }
             
             // Update button text
@@ -3855,15 +4133,26 @@
             
             // Populate modal with site list
             const siteNames = sitesToClean.map(s => s.name);
-            let siteListHTML;
-            if (siteNames.length <= 5) {
-                siteListHTML = siteNames.join('<br>');
-            } else {
-                siteListHTML = siteNames.slice(0, 5).join('<br>') + `<br><strong>... and ${siteNames.length - 5} more sites</strong>`;
-            }
-            siteListHTML = `<strong>${siteNames.length} site(s) selected:</strong><br>` + siteListHTML;
+            const siteListContainer = document.getElementById('bulkCleanupSitesList');
+            siteListContainer.textContent = '';
             
-            document.getElementById('bulkCleanupSitesList').innerHTML = siteListHTML;
+            const headerStrong = document.createElement('strong');
+            headerStrong.textContent = `${siteNames.length} site(s) selected:`;
+            siteListContainer.appendChild(headerStrong);
+            siteListContainer.appendChild(document.createElement('br'));
+            
+            const displayCount = Math.min(5, siteNames.length);
+            for (let i = 0; i < displayCount; i++) {
+                siteListContainer.appendChild(document.createTextNode(siteNames[i]));
+                siteListContainer.appendChild(document.createElement('br'));
+            }
+            
+            if (siteNames.length > 5) {
+                const moreStrong = document.createElement('strong');
+                moreStrong.textContent = `... and ${siteNames.length - 5} more sites`;
+                siteListContainer.appendChild(moreStrong);
+            }
+            
             document.getElementById('bulkVersionsToKeep').value = '50';
             
             // Store sites for later use
@@ -4330,7 +4619,15 @@
                 
                 if (site) {
                     currentSiteUrl = site.webUrl;
-                    document.getElementById('modalSiteName').innerHTML = `<i class="fas fa-globe"></i> ${t('site')}: <strong>${site.name}</strong>`;
+                    const modalSiteName = document.getElementById('modalSiteName');
+                    modalSiteName.textContent = '';
+                    const icon = document.createElement('i');
+                    icon.className = 'fas fa-globe';
+                    modalSiteName.appendChild(icon);
+                    modalSiteName.appendChild(document.createTextNode(' ' + t('site') + ': '));
+                    const strong = document.createElement('strong');
+                    strong.textContent = site.name;
+                    modalSiteName.appendChild(strong);
                 }
                 
                 // Get libraries for this site
@@ -4339,7 +4636,13 @@
                 
                 const libraryList = document.getElementById('libraryList');
                 if (!libraries || libraries.length === 0) {
-                    libraryList.innerHTML = `<div style="text-align: center; padding: 40px; color: #718096;">${t('noLibrariesFound')}</div>`;
+                    libraryList.textContent = '';
+                    const emptyDiv = document.createElement('div');
+                    emptyDiv.style.textAlign = 'center';
+                    emptyDiv.style.padding = '40px';
+                    emptyDiv.style.color = '#718096';
+                    emptyDiv.textContent = t('noLibrariesFound');
+                    libraryList.appendChild(emptyDiv);
                     return;
                 }
                 
@@ -4416,12 +4719,17 @@
                 
             } catch (error) {
                 console.error('Error loading versioning settings:', error);
-                document.getElementById('libraryList').innerHTML = `
-                    <div class="error-state">
-                        <i class="fas fa-exclamation-circle"></i>
-                        <p>Error loading library settings:<br>${error.message}</p>
-                    </div>
-                `;
+                const libraryList = document.getElementById('libraryList');
+                libraryList.textContent = '';
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error-state';
+                const icon = document.createElement('i');
+                icon.className = 'fas fa-exclamation-circle';
+                const p = document.createElement('p');
+                p.textContent = 'Error loading library settings: ' + error.message;
+                errorDiv.appendChild(icon);
+                errorDiv.appendChild(p);
+                libraryList.appendChild(errorDiv);
             }
         };
 

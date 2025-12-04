@@ -5,9 +5,15 @@
 
 const crypto = require('crypto');
 
-// Admin API key - change this to your own secure key
-// In production, set this via environment variable: ADMIN_API_KEY
-const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'your-secure-admin-key-change-me';
+// Admin API key - MUST be set in .env (no default for security)
+// Generate with: openssl rand -hex 32
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
+if (!ADMIN_API_KEY) {
+    console.error('🚨 SECURITY ERROR: ADMIN_API_KEY not set in .env');
+    console.error('📝 Generate one with: openssl rand -hex 32');
+    console.error('📄 Add to .env: ADMIN_API_KEY=<generated-key>');
+    process.exit(1);
+}
 const adminTokenService = require('../services/adminTokenService');
 
 // Security: Track failed authentication attempts (simple in-memory, resets on restart)

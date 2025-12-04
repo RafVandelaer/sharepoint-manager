@@ -1,10 +1,21 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const SharePointService = require('../services/sharePointService');
 const authRoutes = require('./auth');
 const logger = require('../services/logger');
 const auditLogger = require('../services/auditLogger');
 const configService = require('../services/configService');
+
+// Cleanup rate limiter (prevent resource exhaustion)
+const cleanupRateLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 10, // Max 10 cleanup operations per hour per IP
+    message: { error: 'Too many cleanup requests. Please wait an hour before trying again.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: false
+});
 
 // Active cleanup tracking per session (multi-user support)
 // Map<sessionId, { siteId, isCancelled, startTime }>
@@ -47,21 +58,7 @@ const requireAuth = async (req, res, next) => {
             return next();
         }
 
-        // 2) For SSE or limited clients, allow access_token in query string
-        if (req.query && req.query.access_token) {
-            req.accessToken = req.query.access_token;
-            
-            // Try to get sessionId from query or header
-            const sessionId = req.query.sessionId || req.headers['x-session-id'];
-            if (sessionId) {
-                req.authService = authRoutes.getAuthService(sessionId);
-                req.account = authRoutes.getAccount(sessionId);
-            }
-            
-            return next();
-        }
-
-        // 3) X-Session-ID header or sessionId query param (with cookie fallback)
+        // 2) X-Session-ID header or sessionId query param (with cookie fallback)
         let sessionId = req.headers['x-session-id'] || req.query.sessionId;
         
         // PERSISTENCE: Try to restore session from cookie if header/query missing
@@ -953,7 +950,7 @@ router.post('/cleanup/cancel', requireAuth, async (req, res) => {
     }
 });
 
-router.post('/sites/:siteId/cleanup', requireAuth, async (req, res) => {
+router.post('/sites/:siteId/cleanup', requireAuth, cleanupRateLimiter, async (req, res) => {
     const startTime = Date.now();
     try {
         const { siteId } = req.params;

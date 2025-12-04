@@ -77,8 +77,10 @@ cd sharepoint-manager
 # 2. Install dependencies
 npm install
 
-# 3. Generate cookie encryption secret
+# 3. Generate required secrets
 echo "COOKIE_SECRET=$(openssl rand -hex 32)" >> .env
+echo "ADMIN_API_KEY=$(openssl rand -hex 32)" >> .env
+echo "AUDIT_SALT=$(openssl rand -hex 32)" >> .env
 
 # 4. Start the server
 npm run dev
@@ -88,7 +90,12 @@ npm run dev
 # 7. Start managing your SharePoint sites!
 ```
 
-**Note:** Only `COOKIE_SECRET` is needed in `.env` - all Azure credentials are configured via the browser UI and stored in encrypted cookies.
+**Note:** Three secrets are required in `.env`:
+- `COOKIE_SECRET` - Session encryption (AES-256-GCM)
+- `ADMIN_API_KEY` - Admin dashboard access (required for /api/admin endpoints)
+- `AUDIT_SALT` - Privacy hashing for audit logs (GDPR compliance)
+
+All Azure credentials are configured via the browser UI and stored in encrypted cookies.
 
 ---
 
@@ -192,8 +199,21 @@ This script:
 - **CSRF protection** - SameSite=Lax attribute
 - **Credential isolation** - No cross-session data leakage
 - **Secret redaction** - Client secrets never logged
-- **HTTPS enforced** - Secure flag in production
+- **HTTPS enforced** - Secure flag in production, HTTP→HTTPS 301 redirect
 - **No disk persistence** - Only encrypted session cookies, no database/files
+- **XSS protection** - All user-controlled data sanitized via textContent/createElement
+- **Admin authentication** - ADMIN_API_KEY required for dashboard access, no hardcoded fallbacks
+- **Security audit** - Regular vulnerability assessments, see SECURITY_AUDIT_2025-12-01.md
+
+### Recent Security Enhancements
+
+**December 2025:**
+- ✅ Removed hardcoded admin credential fallbacks (CVSS 9.8 → FIXED)
+- ✅ Enforced HTTPS redirect in production (CVSS 7.5 → FIXED)
+- ✅ Created XSS protection utilities (public/js/xss-protection.js)
+- ✅ Fixed XSS vulnerabilities in admin-dashboard.html, app.js, analytics-features.js
+- 🔄 In progress: analytics.html XSS remediation (19 instances remaining)
+- See SECURITY_TODOS.md for detailed remediation tracker
 
 ---
 

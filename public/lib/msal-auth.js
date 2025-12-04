@@ -67,6 +67,10 @@ export async function init(clientId, tenantId) {
     if (response?.account) {
       currentAccount = response.account;
       console.log('Redirect handled, account:', response.account.username);
+      // Store login time for session expiry tracking
+      if (!localStorage.getItem('loginTime')) {
+        localStorage.setItem('loginTime', Date.now().toString());
+      }
     }
   } catch (e) {
     console.warn('handleRedirectPromise error:', e);
@@ -76,6 +80,10 @@ export async function init(clientId, tenantId) {
   const accounts = pca.getAllAccounts();
   if (accounts && accounts.length) {
     currentAccount = accounts[0];
+    // Store login time for session expiry tracking (if not already set)
+    if (!localStorage.getItem('loginTime')) {
+      localStorage.setItem('loginTime', Date.now().toString());
+    }
   }
   localStorage.setItem('msalClientId', clientId);
   localStorage.setItem('msalTenantId', tenantId);
@@ -97,6 +105,10 @@ export async function signIn(scopes = currentScopes) {
     return null;
   } else {
     currentAccount = accounts[0];
+    // Store login time for session expiry tracking
+    if (!localStorage.getItem('loginTime')) {
+      localStorage.setItem('loginTime', Date.now().toString());
+    }
   }
 
   return acquireToken();

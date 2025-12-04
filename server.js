@@ -93,6 +93,16 @@ app.use(cookieParser(COOKIE_SECRET)); // Signed cookies
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// Security: Enforce HTTPS in production (redirect HTTP -> HTTPS)
+if (process.env.NODE_ENV === 'production') {
+    app.use((req, res, next) => {
+        if (req.header('x-forwarded-proto') !== 'https') {
+            return res.redirect(301, `https://${req.header('host')}${req.url}`);
+        }
+        next();
+    });
+}
+
 // Security: Add security headers
 app.use((req, res, next) => {
     // Prevent clickjacking
@@ -105,6 +115,16 @@ app.use((req, res, next) => {
     if (process.env.NODE_ENV === 'production') {
         res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     }
+    // Content Security Policy
+    res.setHeader('Content-Security-Policy', 
+        "default-src 'self'; " +
+        "script-src 'self' https://cdn.jsdelivr.net https://alcdn.msauth.net https://cdnjs.cloudflare.com 'unsafe-inline'; " +
+        "style-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline'; " +
+        "font-src 'self' https://cdnjs.cloudflare.com data:; " +
+        "img-src 'self' data: https:; " +
+        "connect-src 'self' https://graph.microsoft.com https://login.microsoftonline.com; " +
+        "frame-ancestors 'none';"
+    );
     next();
 });
 
@@ -115,6 +135,26 @@ const demoPageLimiter = rateLimit({
     message: 'Too many requests to demo page, please try again in 1 minute',
     standardHeaders: true,
     legacyHeaders: false
+});
+
+// Admin dashboard rate limiter (prevent brute force of admin key)
+const adminRateLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 50, // Max 50 admin requests per 15 min per IP
+    message: { error: 'Too many admin requests. Please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: false // Count all requests (failed auth attempts too)
+});
+
+// Cleanup rate limiter (prevent resource exhaustion)
+const cleanupRateLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 10, // Max 10 cleanup operations per hour per IP
+    message: { error: 'Too many cleanup requests. Please wait an hour before trying again.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: false
 });
 
 // Main route - Analytics is the new home (BEFORE static middleware to override index.html)
@@ -161,7 +201,7 @@ app.use('/api/auth', authRoutes); // Verplaats naar /api/auth zodat frontend wer
 app.use('/auth', authRoutes); // Behoud ook oude pad voor backward compatibility
 app.use('/api/sharepoint', sharePointRoutes);
 app.use('/api/sharepoint-v2', optimizedRoutes); // Optimized routes with streaming support
-app.use('/api/admin', adminRoutes); // Admin audit dashboard routes
+app.use('/api/admin', adminRateLimiter, adminRoutes); // Admin audit dashboard routes (rate limited)
 app.use('/api/demo', demoRoutes); // Demo data endpoints (no auth required)
 
 // Logs endpoint (admin only - requires X-Admin-Key header) - Legacy support
