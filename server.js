@@ -122,7 +122,7 @@ app.use((req, res, next) => {
         "style-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline'; " +
         "font-src 'self' https://cdnjs.cloudflare.com data:; " +
         "img-src 'self' data: https:; " +
-        "connect-src 'self' https://graph.microsoft.com https://login.microsoftonline.com; " +
+        "connect-src 'self' https://graph.microsoft.com https://login.microsoftonline.com https://cdn.jsdelivr.net; " +
         "frame-ancestors 'none';"
     );
     next();

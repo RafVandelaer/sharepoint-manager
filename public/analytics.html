@@ -2376,7 +2376,7 @@
         const WARNING_TIME = 5 * 60 * 1000; // Warn 5 minutes before expiry
         
         function checkSessionExpiry() {
-            const loginTime = localStorage.getItem('loginTime');
+            const loginTime = safeStorage.getItem('loginTime');
             if (!loginTime) return;
             
             const elapsed = Date.now() - parseInt(loginTime);
@@ -2385,15 +2385,21 @@
             if (remaining <= 0) {
                 // Session expired - auto logout
                 console.log('Session expired - logging out');
-                localStorage.removeItem('loginTime');
-                localStorage.removeItem('msal_sessionId');
+                safeStorage.removeItem('loginTime');
+                safeStorage.removeItem('msal_sessionId');
                 alert('Your session has expired. Please log in again.');
                 window.location.href = '/';
-            } else if (remaining <= WARNING_TIME && !sessionStorage.getItem('warningShown')) {
-                // Show warning once
-                sessionStorage.setItem('warningShown', 'true');
-                const minutes = Math.ceil(remaining / 60000);
-                alert(`Your session will expire in ${minutes} minutes. Please save your work.`);
+            } else if (remaining <= WARNING_TIME) {
+                // Show warning once (use try-catch for sessionStorage)
+                try {
+                    if (!sessionStorage.getItem('warningShown')) {
+                        sessionStorage.setItem('warningShown', 'true');
+                        const minutes = Math.ceil(remaining / 60000);
+                        alert(`Your session will expire in ${minutes} minutes. Please save your work.`);
+                    }
+                } catch (e) {
+                    // sessionStorage blocked by Tracking Prevention - skip warning
+                }
             }
         }
         
@@ -2558,13 +2564,13 @@
                 // Persist versionsToKeep default if present
                 const versionsInput = document.getElementById('bulkVersionsToKeepInput') || document.getElementById('bulkVersionsToKeep');
                 if (versionsInput) {
-                    const stored = localStorage.getItem('versionsToKeepDefault');
+                    const stored = safeStorage.getItem('versionsToKeepDefault');
                     if (stored && !versionsInput.dataset.loadedPref) {
                         versionsInput.value = stored;
                         versionsInput.dataset.loadedPref = 'true';
                     }
                     versionsInput.addEventListener('change', () => {
-                        localStorage.setItem('versionsToKeepDefault', versionsInput.value);
+                        safeStorage.setItem('versionsToKeepDefault', versionsInput.value);
                     });
                 }
             } catch (progressiveError) {
@@ -3809,7 +3815,7 @@
                 
                 // REAL MODE: Get access token via MSAL
                 const token = await getTokenOptional();
-                const sessionId = localStorage.getItem('msal_sessionId');
+                const sessionId = safeStorage.getItem('msal_sessionId');
                 
                 debug.log('Starting cleanup - token available:', !!token, 'sessionId:', sessionId);
                 
@@ -3956,7 +3962,7 @@
                 
                 // Call cancel endpoint
                 const token = await getTokenOptional();
-                const sessionId = localStorage.getItem('msal_sessionId');
+                const sessionId = safeStorage.getItem('msal_sessionId');
                 
                 const response = await fetch('/api/sharepoint/cleanup/cancel', {
                     method: 'POST',
@@ -4264,7 +4270,7 @@
                 document.getElementById('cancelCleanupBtn').onclick = window.cancelCleanup;
                 
                 const token = await getTokenOptional();
-                const sessionId = localStorage.getItem('msal_sessionId');
+                const sessionId = safeStorage.getItem('msal_sessionId');
                 
                 let totalFiles = 0;
                 let totalVersions = 0;
@@ -4816,8 +4822,8 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
 
         // Migrate old MSAL config to new tenant structure
         function migrateOldConfig() {
-            const oldClientId = localStorage.getItem('msalClientId');
-            const oldTenantId = localStorage.getItem('msalTenantId');
+            const oldClientId = safeStorage.getItem('msalClientId');
+            const oldTenantId = safeStorage.getItem('msalTenantId');
             
             if (oldClientId && oldTenantId) {
                 debug.log('Migreren oude MSAL configuratie...');
@@ -4927,11 +4933,11 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
         // Load tenants from localStorage
         function loadTenants() {
             try {
-                const stored = localStorage.getItem('sp_tenants');
+                const stored = safeStorage.getItem('sp_tenants');
                 if (stored) {
                     tenants = JSON.parse(stored);
                     // Load current tenant ID
-                    currentTenantId = localStorage.getItem('sp_current_tenant_id');
+                    currentTenantId = safeStorage.getItem('sp_current_tenant_id');
                     if (currentTenantId && !tenants.find(t => t.id === currentTenantId)) {
                         currentTenantId = tenants[0]?.id || null;
                     }
@@ -4948,9 +4954,9 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
         // Save tenants to localStorage
         function saveTenants() {
             try {
-                localStorage.setItem('sp_tenants', JSON.stringify(tenants));
+                safeStorage.setItem('sp_tenants', JSON.stringify(tenants));
                 if (currentTenantId) {
-                    localStorage.setItem('sp_current_tenant_id', currentTenantId);
+                    safeStorage.setItem('sp_current_tenant_id', currentTenantId);
                 }
             } catch (err) {
                 console.error('Error saving tenants:', err);
@@ -5590,7 +5596,7 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
                     key.includes('login.windows.net') ||
                     key.includes('login.microsoftonline.com')
                 );
-                msalKeys.forEach(key => localStorage.removeItem(key));
+                msalKeys.forEach(key => safeStorage.removeItem(key));
                 
                 // Clear state
                 currentAccessToken = null;

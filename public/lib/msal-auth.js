@@ -8,6 +8,32 @@ const debug = {
   error: (...args) => console.error(...args)
 };
 
+// Safe storage wrapper (handles Tracking Prevention in Safari/Firefox)
+const safeStorage = {
+  getItem: (key) => {
+    try {
+      return safeStorage.getItem(key);
+    } catch (e) {
+      debug.warn('localStorage blocked:', e);
+      return null;
+    }
+  },
+  setItem: (key, value) => {
+    try {
+      safeStorage.setItem(key, value);
+    } catch (e) {
+      debug.warn('localStorage blocked:', e);
+    }
+  },
+  removeItem: (key) => {
+    try {
+      safeStorage.removeItem(key);
+    } catch (e) {
+      debug.warn('localStorage blocked:', e);
+    }
+  }
+};
+
 let pca = null;
 let currentAccount = null;
 let currentScopes = [
@@ -21,8 +47,8 @@ export function getPca() {
 }
 
 function getStoredConfig() {
-  const clientId = localStorage.getItem('msalClientId');
-  const tenantId = localStorage.getItem('msalTenantId');
+  const clientId = safeStorage.getItem('msalClientId');
+  const tenantId = safeStorage.getItem('msalTenantId');
   return clientId && tenantId ? { clientId, tenantId } : null;
 }
 
@@ -68,8 +94,8 @@ export async function init(clientId, tenantId) {
       currentAccount = response.account;
       console.log('Redirect handled, account:', response.account.username);
       // Store login time for session expiry tracking
-      if (!localStorage.getItem('loginTime')) {
-        localStorage.setItem('loginTime', Date.now().toString());
+      if (!safeStorage.getItem('loginTime')) {
+        safeStorage.setItem('loginTime', Date.now().toString());
       }
     }
   } catch (e) {
@@ -81,12 +107,12 @@ export async function init(clientId, tenantId) {
   if (accounts && accounts.length) {
     currentAccount = accounts[0];
     // Store login time for session expiry tracking (if not already set)
-    if (!localStorage.getItem('loginTime')) {
-      localStorage.setItem('loginTime', Date.now().toString());
+    if (!safeStorage.getItem('loginTime')) {
+      safeStorage.setItem('loginTime', Date.now().toString());
     }
   }
-  localStorage.setItem('msalClientId', clientId);
-  localStorage.setItem('msalTenantId', tenantId);
+  safeStorage.setItem('msalClientId', clientId);
+  safeStorage.setItem('msalTenantId', tenantId);
   return true;
 }
 
@@ -106,8 +132,8 @@ export async function signIn(scopes = currentScopes) {
   } else {
     currentAccount = accounts[0];
     // Store login time for session expiry tracking
-    if (!localStorage.getItem('loginTime')) {
-      localStorage.setItem('loginTime', Date.now().toString());
+    if (!safeStorage.getItem('loginTime')) {
+      safeStorage.setItem('loginTime', Date.now().toString());
     }
   }
 
