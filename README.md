@@ -90,10 +90,15 @@ npm run dev
 # 7. Start managing your SharePoint sites!
 ```
 
-**Note:** Three secrets are required in `.env`:
+**Note:** Required configuration in `.env`:
 - `COOKIE_SECRET` - Session encryption (AES-256-GCM)
 - `ADMIN_API_KEY` - Admin dashboard access (required for /api/admin endpoints)
 - `AUDIT_SALT` - Privacy hashing for audit logs (GDPR compliance)
+
+**Optional configuration:**
+- `DEBUG_MODE` - Enable verbose logging (`true` or `false`, default: `false`)
+- `PORT` - Server port (default: `3000`)
+- `NODE_ENV` - Environment (`development` or `production`)
 
 All Azure credentials are configured via the browser UI and stored in encrypted cookies.
 

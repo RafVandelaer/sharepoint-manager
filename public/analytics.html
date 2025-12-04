@@ -16,6 +16,10 @@
     <!-- Dark Mode & Advanced Features -->
     <script src="/analytics-features.js?v=20251128-1615"></script>
     <script>
+        // Read DEBUG_MODE from server header (set by .env DEBUG_MODE)
+        const DEBUG_MODE = document.querySelector('meta[name="debug-mode"]')?.content === 'true' || 
+                          (new XMLHttpRequest().getResponseHeader?.('X-Debug-Mode') === 'true');
+        
         // Safe storage wrapper (handles Tracking Prevention in Safari/Firefox)
         // Define globally so it's available before any code uses localStorage
         const safeStorage = {
@@ -23,7 +27,7 @@
                 try {
                     return localStorage.getItem(key);
                 } catch (e) {
-                    console.warn('localStorage blocked (Tracking Prevention):', e);
+                    if (DEBUG_MODE) console.warn('localStorage blocked (Tracking Prevention):', e);
                     return null;
                 }
             },
@@ -31,18 +35,20 @@
                 try {
                     localStorage.setItem(key, value);
                 } catch (e) {
-                    console.warn('localStorage blocked (Tracking Prevention):', e);
+                    if (DEBUG_MODE) console.warn('localStorage blocked (Tracking Prevention):', e);
                 }
             },
             removeItem: (key) => {
                 try {
                     localStorage.removeItem(key);
                 } catch (e) {
-                    console.warn('localStorage blocked (Tracking Prevention):', e);
+                    if (DEBUG_MODE) console.warn('localStorage blocked (Tracking Prevention):', e);
                 }
             }
         };
-    </script>
+        
+        // Expose DEBUG_MODE globally for use in other scripts
+        window.DEBUG_MODE = DEBUG_MODE;
     <style>
         /* Dark Mode Support */
         :root {
@@ -5232,7 +5238,7 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
             }
         };
 
-        window.saveTenantFromModal = function() {
+        window.saveTenantFromModal = async function() {
             const lang = getCurrentLanguage();
             const tenantName = document.getElementById('cfgTenantName').value.trim();
             const tenantId = document.getElementById('cfgTenantId').value.trim();
@@ -5240,12 +5246,18 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
             
             // Validation
             if (!tenantId) {
-                alert(lang === 'nl' ? 'Tenant ID is verplicht' : 'Tenant ID is required');
+                showToast(lang === 'nl' ? 'Tenant ID is verplicht' : 'Tenant ID is required', 'error');
                 return;
             }
             
             if (!clientId) {
-                alert(lang === 'nl' ? 'Client ID is verplicht' : 'Client ID is required');
+                showToast(lang === 'nl' ? 'Client ID is verplicht' : 'Client ID is required', 'error');
+                return;
+            }
+            
+            // Check if tenant already exists
+            if (tenants.some(t => t.id === tenantId)) {
+                showToast(lang === 'nl' ? 'Deze tenant bestaat al' : 'This tenant already exists', 'warning');
                 return;
             }
             
@@ -5278,13 +5290,51 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
             // Close modal
             closeAddTenantModal();
             
-            // Show success message
-            const successMsg = lang === 'nl'
-                ? `Tenant "${finalName}" toegevoegd! Klik op Login om in te loggen.`
-                : `Tenant "${finalName}" added! Click Login to sign in.`;
+            // Show success toast
+            showToast(
+                lang === 'nl'
+                    ? `✅ Tenant "${finalName}" toegevoegd!`
+                    : `✅ Tenant "${finalName}" added!`,
+                'success'
+            );
             
-            alert(successMsg);
+            // Check permissions in background
+            checkTenantPermissions(tenantId, finalName);
         };
+        
+        async function checkTenantPermissions(tenantId, tenantName) {
+            const lang = getCurrentLanguage();
+            try {
+                const response = await fetch(`/api/sharepoint/sites/test-permissions?tenantId=${encodeURIComponent(tenantId)}`, {
+                    headers: {
+                        'X-Session-ID': safeStorage.getItem('msal_sessionId') || ''
+                    }
+                });
+                
+                const data = await response.json();
+                debug.log('Permission check result:', data);
+                
+                if (response.ok && data.hasPermissions) {
+                    showToast(
+                        lang === 'nl'
+                            ? `✅ Permissions inorde voor "${tenantName}"`
+                            : `✅ Permissions OK for "${tenantName}"`,
+                        'success'
+                    );
+                } else if (response.status === 401 || data.error?.includes('401')) {
+                    showToast(
+                        lang === 'nl'
+                            ? `⚠️ Controleer: Admin-toestemming nodig voor "${tenantName}"`
+                            : `⚠️ Note: Admin consent required for "${tenantName}"`,
+                        'warning'
+                    );
+                } else {
+                    debug.log('Permission check issue:', data);
+                }
+            } catch (err) {
+                debug.log('Permission check failed (expected if not logged in yet):', err.message);
+            }
+        }
 
         // Edit tenant name
         window.editTenant = function(tenantId, currentName, event) {

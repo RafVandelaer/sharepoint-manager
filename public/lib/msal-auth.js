@@ -1,7 +1,8 @@
 // MSAL Browser auth helper (delegated, no client secret)
 // Relies on global `msal` from msal-browser script tag in beta/index.html
 
-const DEBUG_MODE = 0;
+// Read DEBUG_MODE from window (set by analytics.html or available globally)
+const DEBUG_MODE = window.DEBUG_MODE || false;
 const debug = {
   log: (...args) => { if (DEBUG_MODE) console.log(...args); },
   warn: (...args) => { if (DEBUG_MODE) console.warn(...args); },

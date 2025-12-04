@@ -20,6 +20,7 @@ const auditLogger = require('./services/auditLogger');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const DEBUG_MODE = process.env.DEBUG_MODE === 'true'; // Configurable debug mode
 
 // NO environment variable validation needed - users set their own Azure config via browser
 logger.log('INFO', 'SERVER', 'STARTING', { port: PORT, mode: 'multi-user' });
@@ -193,8 +194,14 @@ app.get('/beta/index.html', (req, res) => {
     res.redirect('/');
 });
 
-// Serve static files (AFTER route handlers to prevent index.html override)
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static files with DEBUG_MODE header (AFTER route handlers to prevent index.html override)
+app.use(express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, filepath) => {
+        if (filepath.endsWith('.html')) {
+            res.setHeader('X-Debug-Mode', DEBUG_MODE ? 'true' : 'false');
+        }
+    }
+}));
 
 // Routes
 app.use('/api/auth', authRoutes); // Verplaats naar /api/auth zodat frontend werkt
