@@ -5011,10 +5011,10 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
                     <i class="fas fa-building tenant-icon"></i>
                     <span class="tenant-name">${tenant.name}</span>
                     ${tenant.id === currentTenantId ? '<i class="fas fa-check check-icon"></i>' : ''}
-                    <button class="delete-tenant-btn" onclick="editTenant('${tenant.id}', '${tenant.name}', event)" title="Edit tenant name" style="margin-right: 4px;">
+                    <button class="delete-tenant-btn" onclick="editTenant('${tenant.id}', '${escapeHtml(tenant.name)}', event)" title="Edit tenant name" style="margin-right: 4px;">
                         <i class="fas fa-edit"></i>
                     </button>
-                    <button class="delete-tenant-btn" onclick="deleteTenant('${tenant.id}', '${tenant.name}', event)" title="Remove tenant">
+                    <button class="delete-tenant-btn" onclick="deleteTenant('${tenant.id}', '${escapeHtml(tenant.name)}', event)" title="Remove tenant">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -5202,6 +5202,15 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
                                         </label>
                                         <input id="cfgClientId" type="text" class="input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
                                     </div>
+                                    <div id="permissionCheckContainer" style="display:none; padding: 12px; background: rgba(102, 126, 234, 0.1); border-radius: 6px; border-left: 3px solid #667eea;">
+                                        <div style="display:flex; align-items:center; gap:8px;">
+                                            <i class="fas fa-spinner fa-spin" style="color:#667eea;"></i>
+                                            <span id="permissionCheckStatus" style="color:var(--text-secondary); font-size:14px;">
+                                                ${lang === 'nl' ? 'Rechten controleren...' : 'Checking permissions...'}
+                                            </span>
+                                        </div>
+                                        <div id="permissionCheckResult" style="margin-top:8px; font-size:13px;"></div>
+                                    </div>
                                 </div>
                                 <div style="display:flex; gap:12px; margin-top:16px;">
                                     <button class="btn btn-primary" onclick="saveTenantFromModal()" style="flex: 1; padding: 12px; font-size: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
@@ -5299,10 +5308,60 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
                 'success'
             );
             
-            // Check permissions in background
-            checkTenantPermissions(tenantId, finalName);
+            // Show permission check container
+            const permCheckContainer = document.getElementById('permissionCheckContainer');
+            if (permCheckContainer) {
+                permCheckContainer.style.display = 'block';
+                
+                // Simulate permission check
+                checkTenantPermissionsInModal(tenantId, finalName, lang);
+            }
         };
         
+        async function checkTenantPermissionsInModal(tenantId, tenantName, lang) {
+            const resultDiv = document.getElementById('permissionCheckResult');
+            const statusDiv = document.getElementById('permissionCheckStatus');
+            
+            try {
+                const response = await fetch(`/api/sharepoint/sites/test-permissions?tenantId=${encodeURIComponent(tenantId)}`, {
+                    headers: {
+                        'X-Session-ID': safeStorage.getItem('msal_sessionId') || ''
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.hasPermissions) {
+                    statusDiv.innerHTML = `<i class="fas fa-check-circle" style="color:#10b981;"></i> ${lang === 'nl' ? 'Rechten OK' : 'Permissions OK'}`;
+                    resultDiv.innerHTML = `<span style="color:#10b981;">${lang === 'nl' ? '✅ Alle vereiste rechten beschikbaar' : '✅ All required permissions available'}</span>`;
+                } else if (response.status === 401) {
+                    statusDiv.innerHTML = `<i class="fas fa-exclamation-triangle" style="color:#fbbf24;"></i> ${lang === 'nl' ? 'Admin-toestemming nodig' : 'Admin consent needed'}`;
+                    resultDiv.innerHTML = `<span style="color:#f59e0b;">${lang === 'nl' ? '⚠️ Admin moet toestemming geven in Azure Portal' : '⚠️ Admin needs to grant consent in Azure Portal'}</span>`;
+                } else {
+                    statusDiv.innerHTML = `<i class="fas fa-info-circle" style="color:#667eea;"></i> ${lang === 'nl' ? 'Status onbekend' : 'Status unknown'}`;
+                    resultDiv.innerHTML = `<span style="color:#667eea;">${lang === 'nl' ? 'ℹ️ Meld je aan om rechten te controleren' : 'ℹ️ Sign in to verify permissions'}</span>`;
+                }
+            } catch (err) {
+                debug.log('Permission check in modal failed:', err.message);
+                statusDiv.innerHTML = `<i class="fas fa-info-circle" style="color:#667eea;"></i> ${lang === 'nl' ? 'Niet gecontroleerd' : 'Not checked'}`;
+                resultDiv.innerHTML = `<span style="color:#667eea;">${lang === 'nl' ? 'ℹ️ Meld je aan om rechten te controleren' : 'ℹ️ Sign in to verify permissions'}</span>`;
+            }
+        }
+        
+        // Helper function to escape HTML in tenant names
+        function escapeHtml(text) {
+            if (!text) return '';
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+        
+        // Background permission check after tenant is saved
         async function checkTenantPermissions(tenantId, tenantName) {
             const lang = getCurrentLanguage();
             try {
