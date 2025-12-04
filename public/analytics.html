@@ -15,6 +15,34 @@
     <script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
     <!-- Dark Mode & Advanced Features -->
     <script src="/analytics-features.js?v=20251128-1615"></script>
+    <script>
+        // Safe storage wrapper (handles Tracking Prevention in Safari/Firefox)
+        // Define globally so it's available before any code uses localStorage
+        const safeStorage = {
+            getItem: (key) => {
+                try {
+                    return localStorage.getItem(key);
+                } catch (e) {
+                    console.warn('localStorage blocked (Tracking Prevention):', e);
+                    return null;
+                }
+            },
+            setItem: (key, value) => {
+                try {
+                    localStorage.setItem(key, value);
+                } catch (e) {
+                    console.warn('localStorage blocked (Tracking Prevention):', e);
+                }
+            },
+            removeItem: (key) => {
+                try {
+                    localStorage.removeItem(key);
+                } catch (e) {
+                    console.warn('localStorage blocked (Tracking Prevention):', e);
+                }
+            }
+        };
+    </script>
     <style>
         /* Dark Mode Support */
         :root {
