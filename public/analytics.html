@@ -5348,19 +5348,6 @@ Click "Open in SharePoint" and follow the instructions in the window.`;
             }
         }
         
-        // Helper function to escape HTML in tenant names
-        function escapeHtml(text) {
-            if (!text) return '';
-            const map = {
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                '"': '&quot;',
-                "'": '&#039;'
-            };
-            return text.replace(/[&<>"']/g, m => map[m]);
-        }
-        
         // Background permission check after tenant is saved
         async function checkTenantPermissions(tenantId, tenantName) {
             const lang = getCurrentLanguage();
