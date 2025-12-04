@@ -322,9 +322,6 @@ export class LoginModal extends Component {
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Opslaan'; }
     }
   }
-      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Configureer MSAL'; }
-    }
-  }
 }
 
 export const loginModal = new LoginModal();

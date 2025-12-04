@@ -4255,7 +4255,10 @@
                 toast.style.animation = 'slideOut 0.3s ease-out';
                 setTimeout(() => toast.remove(), 300);
             }, 3000);
-        };
+        }
+        
+        // Make showToast globally available
+        window.showToast = showToast;
 
         async function startBulkCleanup(sites, versionsToKeep, dryRun = true) {
             try {
